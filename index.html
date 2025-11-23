@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 초등 임용 영어 면접 연습</title>
+    <!-- Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK 로드 -->
+    <script type="module">
+        // Firebase 앱 초기화
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // Firebase Auth 서비스
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Firestore 서비스
+        import { 
+            getFirestore, 
+            collection, 
+            doc, // 문서 참조용
+            addDoc, 
+            setDoc, // 방문자 수 초기화용
+            updateDoc, // 방문자 수 업데이트용
+            increment, // 숫자 증가용
+            query, 
+            onSnapshot, 
+            serverTimestamp,
+            setLogLevel,
+            getDocs, 
+            writeBatch 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase 및 앱 설정 ---
+        let db, auth, userId;
+        let practiceCollectionRef;
+        
+        // 사용자가 제공한 Firebase 설정 값
+        const firebaseConfig = {
+            apiKey: "AIzaSyBo9J3psRdM1Fh6JW7G8UYcgJGxQXmv9dk", // Firebase SDK 키
+            authDomain: "advent-calendar-1f508.firebaseapp.com",
+            projectId: "advent-calendar-1f508",
+            storageBucket: "advent-calendar-1f508.firebasestorage.app",
+            messagingSenderId: "724448812706",
+            appId: "1:724448812706:web:fedf4d00d9f147f3b8c1fb",
+            measurementId: "G-6CDELFGGB3"
+        };
+        
+        // [중요] 403 오류 해결을 위해 Google AI Studio (https://aistudio.google.com/app/apikey)에서
+        // 발급받은 **Gemini API 키**를 여기에 입력하세요.
+        // 예: const apiKey = "AIzaSyAwozb5p5QBA0rSdzTSRbO92fF83u_cU5M";
+        const apiKey = "AIzaSyAwozb5p5QBA0rSdzTSRbO92fF83u_cU5M"; // <--- 403 오류 해결을 위해 이 키를 교체하세요.
+
+        // Firebase 초기화
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            // setLogLevel('Debug'); // 배포 시에는 로그 레벨 조정 가능
+            console.log("Firebase initialized successfully.");
+        } catch (e) {
+            console.error("Error initializing Firebase: ", e);
+            document.getElementById('main-app').innerHTML = '<p class="text-red-500 text-center">Firebase 초기화에 실패했습니다. config 정보를 확인하세요.</p>';
+        }
+
+        // --- UI 요소 참조 ---
+        const questionDisplay = document.getElementById('question-display');
+        const recordBtn = document.getElementById('record-btn');
+        const userAnswerTextarea = document.getElementById('user-answer');
+        const submitBtn = document.getElementById('submit-btn');
+        const recordingSection = document.getElementById('recording-section');
+        
+        const feedbackSection = document.getElementById('feedback-section');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const submittedAnswerDisplay = document.getElementById('submitted-answer-display');
+        const modelAnswerDisplay = document.getElementById('model-answer-display');
+        const aiFeedbackDisplay = document.getElementById('ai-feedback-display');
+        const nextBtn = document.getElementById('next-btn');
+        
+        const historyLog = document.getElementById('history-log');
+        const historyToggleBtn = document.getElementById('history-toggle-btn');
+        const historyContainer = document.getElementById('history-container');
+        const clearHistoryBtn = document.getElementById('clear-history-btn');
+        
+        const confirmModal = document.getElementById('confirmModal');
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+
+        // 피드백 폼 요소
+        const feedbackForm = document.getElementById('feedback-form');
+        const feedbackText = document.getElementById('feedback-text');
+        const feedbackSubmitBtn = document.getElementById('feedback-submit-btn');
+        const feedbackMessage = document.getElementById('feedback-message');
+        
+        // 방문자 수 요소
+        const visitorCountDisplay = document.getElementById('visitor-count-display');
+        
+        // 오류 표시줄
+        const errorDisplay = document.getElementById('error-display');
+
+        // --- 음성 인식 설정 ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        let isRecording = false;
+        let currentTranscript = "";
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'en-US'; 
+            recognition.interimResults = false;
+            recognition.continuous = true; 
+
+            recognition.onstart = () => {
+                isRecording = true;
+                recordBtn.disabled = false; // (수정) 다시 누를 수 있도록(중지) 활성화
+                recordBtn.innerHTML = `
+                    <svg class="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a3 3 0 116 0 3 3 0 01-6 0z"></path></svg>
+                    <span>녹음 중지</span>`;
+                recordBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                recordBtn.classList.add('bg-gray-700', 'hover:bg-gray-800');
+                currentTranscript = userAnswerTextarea.value; 
+                submitBtn.disabled = true;
+            };
+
+            recognition.onresult = (event) => {
+                let transcript = "";
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    transcript += event.results[i][0].transcript + " ";
+                }
+                currentTranscript = userAnswerTextarea.value + transcript; 
+                userAnswerTextarea.value = currentTranscript.trim();
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                recordBtn.disabled = false; // (수정) 오류 발생 시 버튼 다시 활성화
+                if (errorDisplay) {
+                    errorDisplay.textContent = `음성 인식 오류: ${event.error}. 마이크 권한을 확인하고 페이지를 새로고침 해주세요.`;
+                    errorDisplay.classList.remove('hidden');
+                }
+            };
+
+            recognition.onend = () => {
+                isRecording = false;
+                recordBtn.disabled = false; // (수정) 녹음이 끝나면 버튼 다시 활성화
+                recordBtn.innerHTML = `
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zM10 15a5 5 0 005-5h-1.5a3.5 3.5 0 11-7 0H5a5 5 0 005 5z" clip-rule="evenodd"></path></svg>
+                    <span>녹음 시작</span>`;
+                recordBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                recordBtn.classList.remove('bg-gray-700', 'hover:bg-gray-800');
+                submitBtn.disabled = (userAnswerTextarea.value.trim().length === 0);
+            };
+
+            if (recordBtn) {
+                // (수정) 레이스 컨디션(경합) 방지를 위한 버튼 클릭 로직 수정
+                recordBtn.onclick = () => {
+                    if (isRecording) {
+                        recordBtn.disabled = true; // (수정) 중지 시 즉시 비활성화
+                        recordBtn.innerHTML = `... <span>처리 중...</span>`;
+                        recognition.stop();
+                    } else {
+                        recordBtn.disabled = true; // (수정) 시작 시 즉시 비활성화 (오류 방지)
+                        recordBtn.innerHTML = `... <span>시작 중...</span>`;
+                        try {
+                            recognition.start();
+                        } catch (e) {
+                            console.error("Failed to start recognition:", e);
+                            recordBtn.disabled = false; // (수정) 예외 발생 시 버튼 활성화
+                            // `onend`가 호출되지 않을 수 있으므로 UI 원상 복구
+                            isRecording = false;
+                            recordBtn.innerHTML = `... <span>녹음 시작</span>`;
+                            recordBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                            recordBtn.classList.remove('bg-gray-700', 'hover:bg-gray-800');
+                            if (errorDisplay) {
+                                errorDisplay.textContent = `음성 인식을 시작할 수 없습니다: ${e.message}`;
+                                errorDisplay.classList.remove('hidden');
+                            }
+                        }
+                    }
+                };
+            }
+
+        } else {
+            console.error("Speech Recognition not supported");
+            window.addEventListener('load', () => {
+                if (errorDisplay) {
+                    errorDisplay.textContent = '이 브라우저에서는 음성 인식을 지원하지 않습니다. Chrome 브라우저를 사용해 주세요.';
+                    errorDisplay.classList.remove('hidden');
+                }
+                if (recordingSection) recordingSection.classList.add('hidden'); 
+            });
+        }
+
+        // --- 질문 엔진 ---
+        const seedQuestions = [
+            "Choose a topic that can foster community competency and suggest two activities you want to do.",
+            "Suggest 2 effective teaching methods in-class, and 2 effective teaching methods after school to support slow-learner.",
+            "Suggest how to use English textbook when there is a learning gap between students and why.",
+            "Suggest two ways and effects of using AI and Digital devices for learning English.",
+            "Suggest physical and non-physical aspects of effective environment that you would consider for 3rd grade students.",
+            "Suggest two ways to provide individual feedback in online class while cooperating with the native teacher.",
+            "What is your opinion about global success of Korean culture?",
+            "Do you think that Artificial Intelligence (AI) can replace the human teacher?",
+            "Explain the two strategies that you used to engage students in the class in your demo lesson.",
+            "What makes the students keep the class rules constantly?",
+            "What is the most important factor of diminishing children's education gap?",
+            "How would you give hope to the students who lack of confidence?",
+            "Tell me about your turning point experience in life and describe it.",
+            "How will you manage a peaceful classroom without bullying?",
+            "Suggest 2 teaching materials and how to use them to integrate two language skills.",
+            "Describe your one short-term plan and one long-term plan to develop your teaching expertise.",
+            "Provide 2 ways to activate students' Schemata on the introduction stage in English lesson.",
+            "Tell us 2 criteria to choose and use storybook in English lesson.",
+            "Tell us 2 strategies to promote students to read more books.",
+            "Tell us 2 methods to increase students' English use in the classroom.",
+            "Tell us 2 strategies to promote students to cooperate in a group project.",
+            "Which one do you prefer typing or handwriting while taking a note during a lecture? Choose one, and tell 2 reasons.",
+            "What do you think is the ideal number of students in the class? Tell us 2 reasons.",
+            "If you had a chance to learn a language other than English, what language would you like to learn? Tell us 2 reasons.",
+            "As a teacher, how will you motivate students who are not interested in learning English? Provide two specific strategies.",
+            "How can you encourage students to actively participate in English class? Give us two specific methods.",
+            "Tell us 2 advantages of role play activitiy.", 
+            "Tell us two things you would like to do on your first vacation after becoming a teacher."
+        ];
+        
+        let usedSeedQuestions = new Set();
+        let currentQuestion = "";
+        let allHistory = []; 
+
+        async function loadNextQuestion() {
+            // (수정) 음성 인식이 진행 중이면 멈춤
+            if (isRecording) {
+                recognition.stop();
+            }
+            
+            if (feedbackSection) feedbackSection.classList.add('hidden');
+            if (recordingSection) recordingSection.classList.remove('hidden');
+            if (userAnswerTextarea) userAnswerTextarea.value = "";
+            if (submitBtn) submitBtn.disabled = true;
+            if (questionDisplay) {
+                questionDisplay.textContent = "새로운 질문을 생성 중입니다...";
+                questionDisplay.classList.add('animate-pulse');
+            }
+
+            let availableSeeds = seedQuestions.filter(q => !usedSeedQuestions.has(q));
+
+            if (availableSeeds.length > 0) {
+                currentQuestion = availableSeeds[Math.floor(Math.random() * availableSeeds.length)];
+                usedSeedQuestions.add(currentQuestion);
+                displayQuestion(currentQuestion);
+            } else {
+                await generateNewQuestion();
+            }
+        }
+
+        function displayQuestion(question) {
+            currentQuestion = question;
+            if (questionDisplay) {
+                questionDisplay.textContent = currentQuestion;
+                questionDisplay.classList.remove('animate-pulse');
+            }
+        }
+
+        async function generateNewQuestion() {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const examples = seedQuestions.sort(() => 0.5 - Math.random()).slice(0, 4).join('\n - ');
+
+            const payload = {
+                contents: [{
+                    parts: [{
+                        text: `You are an expert question generator for the Korean Elementary School Teacher Certification Exam (초등 임용고시) English interview. 
+                        Your sole purpose is to provide a single, high-quality interview question in English.
+                        The question must be in English. 
+                        Do not add any preamble, explanation, or quotation marks. Just return the single question text. 
+                        The question should be similar in style to these examples:\n - ${examples}`
+                    }]
+                }],
+                generationConfig: {
+                    maxOutputTokens: 100,
+                    temperature: 0.9,
+                }
+            };
+
+            try {
+                const response = await fetchWithExponentialBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    if (response.status === 403) {
+                         throw new Error("Gemini API Key가 잘못되었거나 권한이 없습니다. Google AI Studio에서 키를 확인하세요.");
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (!result.candidates || !result.candidates[0].content || !result.candidates[0].content.parts[0].text) {
+                     if (result.candidates && result.candidates[0].finishReason === "SAFETY") {
+                         throw new Error("Response blocked due to safety settings.");
+                     }
+                    throw new Error("Invalid response structure from API.");
+                }
+
+                const newQuestion = result.candidates[0].content.parts[0].text.trim();
+                displayQuestion(newQuestion);
+            } catch (error) {
+                console.error("Error generating new question:", error);
+                displayQuestion("질문 생성 실패: " + error.message);
+            }
+        }
+
+        if (submitBtn) {
+            submitBtn.onclick = async () => {
+                // (수정) 음성 인식이 진행 중이면 멈춤
+                if (isRecording) {
+                    recognition.stop();
+                }
+                
+                const userAnswer = userAnswerTextarea.value;
+                if (userAnswer.trim().length === 0) return;
+
+                if (recordingSection) recordingSection.classList.add('hidden');
+                if (feedbackSection) feedbackSection.classList.remove('hidden');
+                if (loadingSpinner) loadingSpinner.classList.remove('hidden');
+                if (submittedAnswerDisplay) submittedAnswerDisplay.parentElement.classList.add('hidden');
+                if (modelAnswerDisplay) modelAnswerDisplay.parentElement.classList.add('hidden');
+                if (aiFeedbackDisplay) aiFeedbackDisplay.parentElement.classList.add('hidden');
+                if (nextBtn) nextBtn.classList.add('hidden');
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+                const systemPrompt = `You are an expert evaluator for the Korean Elementary Teacher Exam English interview.
+                The user needs to answer 2 questions in 5 minutes, so answers must be SIMPLE, CLEAR, and CONVERSATIONAL.
+                
+                You must provide:
+                1.  'feedback' (in KOREAN): Friendly, constructive feedback. Start by praising, then suggest simple improvements. Be encouraging. (예: "좋은 시도였어요! 문장을 조금 더 자연스럽게 다듬으면...")
+                2.  'modelAnswer' (in ENGLISH): This is the *most important* part.
+                    - It must be a SLIGHTLY IMPROVED version of the user's answer. Do NOT write a new, professional answer.
+                    - Use SIMPLE, COMMON English words. (like user's examples: "I can write more faster", "my handwriting is pretty bad", "storybook", "role play").
+                    - DO NOT use difficult or academic words (e.g., "frequently", "differentiated", "ensure", "implement", "personalized").
+                    - Keep it SHORT and DIRECT.
+                    - It MUST start with "I will tell you about..." or "I will explain..." or "I prefer...".
+                
+                Respond ONLY in this JSON format.`;
+                
+                const payload = {
+                    contents: [{
+                        parts: [{
+                            text: `Question: "${currentQuestion}"\n\nStudent's Answer: "${userAnswer}"`
+                        }]
+                    }],
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                modelAnswer: { "type": "STRING", "description": "A slightly improved version of the user's answer, using simple English and starting with 'I will...'." },
+                                feedback: { "type": "STRING", "description": "Constructive feedback in KOREAN." }
+                            },
+                            required: ["modelAnswer", "feedback"]
+                        }
+                    }
+                };
+
+                try {
+                    const response = await fetchWithExponentialBackoff(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 403) {
+                            throw new Error("Gemini API Key가 잘못되었거나 권한이 없습니다. Google AI Studio에서 키를 확인하세요.");
+                        }
+                        if (response.status === 400) {
+                            const errorBody = await response.json();
+                            if (errorBody.error && errorBody.error.message.includes("API key not valid")) {
+                                throw new Error("Gemini API Key가 유효하지 않습니다. (400 Bad Request)");
+                            } else {
+                                throw new Error(errorBody.error ? errorBody.error.message : "400 Bad Request");
+                            }
+                        }
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (!result.candidates || !result.candidates[0].content || !result.candidates[0].content.parts[0].text) {
+                         if (result.candidates && result.candidates[0].finishReason === "SAFETY") {
+                             throw new Error("Response blocked due to safety settings.");
+                         }
+                        throw new Error("Invalid response structure from API.");
+                    }
+
+                    const jsonResponse = JSON.parse(result.candidates[0].content.parts[0].text);
+                    const { modelAnswer, feedback } = jsonResponse;
+
+                    if (submittedAnswerDisplay) submittedAnswerDisplay.textContent = userAnswer;
+                    if (modelAnswerDisplay) modelAnswerDisplay.textContent = modelAnswer;
+                    if (aiFeedbackDisplay) aiFeedbackDisplay.textContent = feedback;
+
+                    if (submittedAnswerDisplay) submittedAnswerDisplay.parentElement.classList.remove('hidden');
+                    if (modelAnswerDisplay) modelAnswerDisplay.parentElement.classList.remove('hidden');
+                    if (aiFeedbackDisplay) aiFeedbackDisplay.parentElement.classList.remove('hidden');
+                    if (nextBtn) nextBtn.classList.remove('hidden');
+
+                    if (userId) {
+                        await savePractice(currentQuestion, userAnswer, modelAnswer, feedback);
+                    }
+
+                } catch (error) {
+                    console.error("Error getting feedback:", error);
+                    if (aiFeedbackDisplay) {
+                        aiFeedbackDisplay.textContent = "피드백 생성 실패: " + error.message;
+                        aiFeedbackDisplay.parentElement.classList.remove('hidden');
+                    }
+                    if (nextBtn) nextBtn.classList.remove('hidden'); 
+                } finally {
+                    if (loadingSpinner) loadingSpinner.classList.add('hidden');
+                }
+            };
+        }
+        
+        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000) {
+            try {
+                const response = await fetch(url, options);
+                if (response.status === 403 || response.status === 400) {
+                    return response;
+                }
+                if (response.status === 429 && retries > 0) { 
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
+                }
+                if (!response.ok && response.status >= 500 && retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
+                }
+                return response;
+            } catch (error) { 
+                if (retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
+                }
+                throw error;
+            }
+        }
+
+
+        // --- Firestore 연동 (개인 기록) ---
+        async function savePractice(question, userAnswer, modelAnswer, feedback) {
+            try {
+                if (!practiceCollectionRef) return;
+                await addDoc(practiceCollectionRef, {
+                    question: question,
+                    userAnswer: userAnswer,
+                    modelAnswer: modelAnswer,
+                    feedback: feedback,
+                    timestamp: serverTimestamp()
+                });
+            } catch (e) {
+                console.error("Error adding document: ", e);
+            }
+        }
+
+        function loadHistory() {
+            if (!practiceCollectionRef) return;
+            const q = query(practiceCollectionRef);
+            onSnapshot(q, (snapshot) => {
+                if (!historyLog) return;
+                historyLog.innerHTML = ""; 
+                allHistory = []; 
+                
+                if (snapshot.empty) {
+                    historyLog.innerHTML = '<p class="text-gray-500">아직 공부 기록이 없습니다.</p>';
+                    return;
+                }
+                
+                snapshot.forEach((doc) => {
+                    allHistory.push(doc.data());
+                });
+
+                allHistory.sort((a, b) => {
+                    const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
+                    const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
+                    return timeB - timeA;
+                });
+
+                renderHistory(allHistory);
+            }, (error) => { 
+                console.error("Error loading history:", error);
+                if (historyLog) historyLog.innerHTML = `<p class="text-red-500">공부 기록 로드 실패: ${error.message}. Firestore 규칙을 확인하세요.</p>`;
+            });
+        }
+
+        function renderHistory(historyData) {
+            if (!historyLog) return;
+            historyLog.innerHTML = ""; 
+            
+            if (historyData.length === 0) {
+                 historyLog.innerHTML = '<p class="text-gray-500">아직 공부 기록이 없습니다.</p>';
+                 return;
+            }
+
+            historyData.forEach((data) => {
+                const logEntry = document.createElement('div');
+                logEntry.className = "bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-3";
+                logEntry.innerHTML = `
+                    <h5 class="font-semibold text-gray-800">질문: ${data.question}</h5>
+                    <div class="border-t pt-2">
+                        <p class="text-sm font-medium text-blue-700">나의 답변:</p>
+                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${data.userAnswer || ''}</p>
+                    </div>
+                    <div class="border-t pt-2">
+                        <p class="text-sm font-medium text-green-700">모범 답안 (AI):</p>
+                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${data.modelAnswer || ''}</p>
+                    </div>
+                    <div class="border-t pt-2">
+                        <p class="text-sm font-medium text-yellow-800">AI 피드백 (한국어):</p>
+                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${data.feedback || ''}</p>
+                    </div>
+                    <p class="text-xs text-gray-400 text-right">${data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString('ko-KR') : '날짜 없음'}</p>
+                `;
+                historyLog.appendChild(logEntry);
+            });
+        }
+
+        // --- 총 방문자 수 로직 (세션당 1회) ---
+        function setupVisitorCounter() {
+            const statsDocRef = doc(db, "meta", "stats");
+
+            // (수정) 중복 카운트 방지 로직 강화
+            const sessionKey = 'visitorCounted';
+            if (!sessionStorage.getItem(sessionKey)) {
+                // (수정) 세션 저장소를 *먼저* 설정합니다.
+                // 스크립트가 Firebase 호출 후 .then() 전에 멈추더라도
+                // 새로고침 시 중복 카운트되는 것을 방지합니다.
+                sessionStorage.setItem(sessionKey, 'true'); 
+                console.log("Setting session key and incrementing count...");
+
+                setDoc(statsDocRef, { visitorCount: increment(1) }, { merge: true })
+                    .then(() => {
+                        console.log("Visitor count incremented successfully.");
+                    })
+                    .catch((e) => {
+                        // (수정) 카운트 실패 시, 다음 방문을 위해 세션 키를 지우지 *않습니다*.
+                        // (오류가 나도 이 세션에서는 이미 시도한 것으로 간주)
+                        console.error("Error incrementing visitor count:", e);
+                        if (visitorCountDisplay) {
+                            visitorCountDisplay.textContent = `방문자 수 오류`;
+                        }
+                        if (errorDisplay) {
+                            errorDisplay.textContent = `방문자 수 집계 실패: Firestore 'meta/stats' 문서에 대한 쓰기 권한을 확인하세요. (오류: ${e.message})`;
+                            errorDisplay.classList.remove('hidden');
+                        }
+                    });
+            } else {
+                console.log("Visitor already counted for this session.");
+            }
+
+            // 실시간 리스너 (UI 표시용)
+            onSnapshot(statsDocRef, (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const data = docSnapshot.data();
+                    const count = data.visitorCount || 0;
+                    if (visitorCountDisplay) {
+                        visitorCountDisplay.textContent = `총 방문자: ${count.toLocaleString()}명`;
+                    }
+                } else {
+                     if (visitorCountDisplay) {
+                        visitorCountDisplay.textContent = `총 방문자: 0명`;
+                    }
+                }
+            }, (error) => { 
+                console.error("Error listening to visitor count:", error);
+                if (visitorCountDisplay) {
+                    visitorCountDisplay.textContent = `방문자 수 로드 실패`;
+                }
+            });
+        }
+
+        // --- Google Form 피드백 ---
+        async function handleFeedbackSubmit(event) {
+            event.preventDefault(); 
+            
+            const feedbackValue = feedbackText.value.trim();
+            if (feedbackValue.length === 0) {
+                feedbackMessage.textContent = "의견을 입력해주세요.";
+                feedbackMessage.className = "text-yellow-600 text-sm mt-2";
+                feedbackMessage.classList.remove('hidden');
+                return;
+            }
+
+            const GOOGLE_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdHztn5gaeJefnDyYc_JANn7nvnCD7oA-sRCSqefxUivM87wA/formResponse";
+            const GOOGLE_FORM_ENTRY_ID = "entry.677219120";
+
+            const formData = new FormData();
+            formData.append(GOOGLE_FORM_ENTRY_ID, feedbackValue);
+
+            feedbackSubmitBtn.disabled = true;
+            feedbackSubmitBtn.textContent = "제출 중...";
+            feedbackMessage.classList.add('hidden');
+
+            try {
+                await fetch(GOOGLE_FORM_ACTION_URL, {
+                    method: 'POST',
+                    body: formData,
+                    mode: 'no-cors' 
+                });
+                
+                feedbackText.value = "";
+                feedbackMessage.textContent = "소중한 의견 감사합니다!";
+                feedbackMessage.className = "text-green-600 text-sm mt-2";
+                feedbackMessage.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Feedback submission error:', error);
+                feedbackMessage.textContent = "제출에 실패했습니다. 나중에 다시 시도해주세요.";
+                feedbackMessage.className = "text-red-600 text-sm mt-2";
+                feedbackMessage.classList.remove('hidden');
+            } finally {
+                feedbackSubmitBtn.disabled = false;
+                feedbackSubmitBtn.textContent = "의견 제출하기";
+            }
+        }
+
+
+        // --- 초기화 및 이벤트 리스너 ---
+        window.addEventListener('load', () => {
+            
+            // D-Day Counter Logic
+            try {
+                const dDayDisplay = document.getElementById('d-day-display-content');
+                if (dDayDisplay) {
+                    const targetDate = new Date('2026-01-07T00:00:00');
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0); 
+                    const diffTime = targetDate.getTime() - today.getTime();
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+
+                    let dDayText = "";
+                    if (diffDays > 0) {
+                        dDayText = `면접까지 D-${diffDays} 🍀`;
+                    } else if (diffDays === 0) {
+                        dDayText = `D-Day! 행운을 빕니다! 🍀`;
+                    } else {
+                        dDayText = `면접 D+${Math.abs(diffDays)} 🍀`;
+                    }
+                    dDayDisplay.textContent = dDayText;
+                }
+            } catch (e) {
+                console.error("Error calculating D-Day:", e);
+                const dDayDisplay = document.getElementById('d-day-display-content');
+                if(dDayDisplay) dDayDisplay.textContent = "D-Day 🍀"; 
+            }
+
+            // Firebase Auth 상태 리스너
+            if (auth) {
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("User is signed in:", userId);
+                    } else {
+                        console.log("User is not signed in, attempting auth...");
+                        try {
+                            const userCredential = await signInAnonymously(auth);
+                            userId = userCredential.user.uid;
+                            console.log("Signed in anonymously:", userId);
+                        } catch (error) {
+                            console.error("Authentication failed:", error);
+                            if (errorDisplay) {
+                                errorDisplay.textContent = `인증 실패: Firebase '익명 로그인'이 활성화되었는지 확인하세요. (오류: ${error.message})`;
+                                errorDisplay.classList.remove('hidden');
+                            }
+                            return;
+                        }
+                    }
+                    
+                    try {
+                        practiceCollectionRef = collection(db, `users/${userId}/interview_practice`);
+                        loadHistory();
+                        loadNextQuestion(); 
+                        
+                        // 방문자 수 카운터 시작
+                        setupVisitorCounter();
+                        
+                    } catch (e) {
+                         console.error("Error setting up Firestore:", e);
+                         if (errorDisplay) {
+                             errorDisplay.textContent = `Firestore 설정 오류: ${e.message}`;
+                             errorDisplay.classList.remove('hidden');
+                         }
+                    }
+                }, (error) => { 
+                    console.error("Auth state error:", error);
+                    if (errorDisplay) {
+                        errorDisplay.textContent = `인증 상태 오류: ${error.message}`;
+                        errorDisplay.classList.remove('hidden');
+                    }
+                });
+            } else {
+                console.error("Firebase Auth service is not available.");
+                 if (errorDisplay) {
+                     errorDisplay.textContent = "Firebase Auth 초기화에 실패했습니다. 페이지를 새로고침하세요.";
+                     errorDisplay.classList.remove('hidden');
+                 }
+            }
+
+            if (userAnswerTextarea) {
+                userAnswerTextarea.addEventListener('input', () => {
+                    if (submitBtn) submitBtn.disabled = (userAnswerTextarea.value.trim().length === 0);
+                });
+            }
+        });
+
+        if (nextBtn) nextBtn.onclick = loadNextQuestion;
+
+        if (historyToggleBtn) {
+            historyToggleBtn.onclick = () => {
+                if (historyContainer) {
+                    historyContainer.classList.toggle('hidden');
+                    historyToggleBtn.textContent = historyContainer.classList.contains('hidden') ? '공부 기록 보기' : '공부 기록 숨기기';
+                }
+            };
+        }
+
+        if (clearHistoryBtn) {
+            clearHistoryBtn.onclick = () => {
+                if (confirmModal) confirmModal.classList.remove('hidden'); 
+            };
+        }
+        
+        if (cancelDeleteBtn) {
+            cancelDeleteBtn.onclick = () => { 
+                if (confirmModal) confirmModal.classList.add('hidden'); 
+            };
+        }
+
+        if (confirmDeleteBtn) {
+            confirmDeleteBtn.onclick = async () => {
+                try {
+                    if (!practiceCollectionRef) {
+                         if (confirmModal) confirmModal.classList.add('hidden');
+                         return;
+                    }
+                    const q = query(practiceCollectionRef);
+                    const snapshot = await getDocs(q); 
+                    const batch = writeBatch(db); 
+                    snapshot.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    allHistory = [];
+                    renderHistory(allHistory); 
+                    if (confirmModal) confirmModal.classList.add('hidden'); 
+
+                } catch (error) {
+                    console.error("Error clearing history:", error);
+                    if(errorDisplay) {
+                        errorDisplay.textContent = `기록 삭제 중 오류: ${error.message}`;
+                        errorDisplay.classList.remove('hidden');
+                    } else {
+                        alert("기록 삭제 중 오류가 발생했습니다: " + error.message);
+                    }
+                    if (confirmModal) confirmModal.classList.add('hidden');
+                }
+            };
+        }
+
+        if (feedbackForm) {
+            feedbackForm.addEventListener('submit', handleFeedbackSubmit);
+        }
+
+    </script>
+</head>
+<body class="bg-gray-100 font-sans p-4 md:p-8">
+
+    <!-- 오류 표시줄 -->
+    <div id="error-display" class="hidden max-w-4xl mx-auto p-4 mb-4 bg-red-100 text-red-700 border border-red-300 rounded-lg"></div>
+
+    <div id="main-app" class="max-w-4xl mx-auto space-y-6">
+        
+        <!-- D-Day & Stats Counter -->
+        <div class="flex flex-col items-end -mb-2 space-y-2">
+            <div class="bg-white py-2 px-4 rounded-lg shadow-lg text-lg font-semibold text-green-700 flex items-center gap-2">
+                <span id="d-day-display-content">Loading...</span>
+            </div>
+            <!-- 방문자 수 표시 -->
+            <div class="bg-blue-50 py-1 px-3 rounded-lg border border-blue-100 text-sm font-medium text-blue-600 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"></path></svg>
+                <span id="visitor-count-display">방문자 수 집계 중...</span>
+            </div>
+        </div>
+
+        <!-- 헤더 -->
+        <header class="text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-800">2026 초등 임용 영어 면접 연습</h1>
+            <p class="text-lg text-gray-600 mt-2">나만의 맞춤형 피드백과 함께 실전처럼 연습하세요!</p>
+        </header>
+
+        <!-- 면접 연습 카드 -->
+        <main class="bg-white p-6 md:p-8 rounded-xl shadow-2xl space-y-6">
+            
+            <!-- 질문 표시 -->
+            <div>
+                <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">면접 질문:</h2>
+                <div id="question-display" class="mt-2 p-4 bg-gray-50 rounded-lg text-lg md:text-xl font-semibold text-gray-900 min-h-[6rem] flex items-center justify-center text-center">
+                    질문을 불러오는 중입니다...
+                </div>
+            </div>
+
+            <!-- 녹음 섹션 -->
+            <div id="recording-section" class="space-y-4">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button id="record-btn" class="flex-shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 disabled:opacity-50">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zM10 15a5 5 0 005-5h-1.5a3.5 3.5 0 11-7 0H5a5 5 0 005 5z" clip-rule="evenodd"></path></svg>
+                        <span>녹음 시작</span>
+                    </button>
+                    <p class="text-sm text-gray-500 flex-grow text-center sm:text-left my-auto">버튼을 누르고 영어로 답변하세요. 답변 수정도 가능합니다.</p>
+                </div>
+                
+                <label for="user-answer" class="block text-sm font-medium text-gray-700">나의 답변 (음성 인식 결과 / 직접 수정 가능):</label>
+                <textarea id="user-answer" class="w-full h-32 p-3 bg-gray-50 border border-gray-300 rounded-lg shadow-inner focus:ring-blue-500 focus:border-blue-500" placeholder="여기에 음성 인식 결과가 표시됩니다..."></textarea>
+                
+                <button id="submit-btn" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                    답변 제출 및 피드백 받기
+                </button>
+            </div>
+
+            <!-- 피드백 섹션 -->
+            <div id="feedback-section" class="hidden space-y-6">
+                <!-- 로딩 스피너 -->
+                <div id="loading-spinner" class="hidden flex items-center justify-center gap-3 text-lg text-blue-600 p-4">
+                    <svg class="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Gemini AI가 피드백을 생성 중입니다...</span>
+                </div>
+
+                <!-- 나의 답변 -->
+                <div class="space-y-2">
+                    <h4 class="text-lg font-semibold text-gray-800">나의 답변:</h4>
+                    <p id="submitted-answer-display" class="bg-gray-50 p-4 rounded-lg shadow-inner text-gray-700 whitespace-pre-wrap"></p>
+                </div>
+
+                <!-- 모범 답안 -->
+                <div class="space-y-2">
+                    <h4 class="text-lg font-semibold text-green-800">모범 답안 (AI):</h4>
+                    <p id="model-answer-display" class="bg-green-50 border border-green-200 p-4 rounded-lg shadow-inner text-green-900 whitespace-pre-wrap"></p>
+                </div>
+
+                <!-- AI 피드백 -->
+                <div class="space-y-2">
+                    <h4 class="text-lg font-semibold text-yellow-800">Gemini AI 피드백 (한국어):</h4>
+                    <p id="ai-feedback-display" class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg shadow-inner text-yellow-900 whitespace-pre-wrap"></p>
+                </div>
+
+                <!-- 다음 문제 버튼 -->
+                <button id="next-btn" class="hidden w-full bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-green-700 transition duration-200">
+                    다음 문제로
+                </button>
+            </div>
+        </main>
+
+        <!-- 공부 기록 섹션 -->
+        <section class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                <h3 class="text-2xl font-bold text-gray-800">나의 공부 기록 </h3>
+                <div class="flex gap-2">
+                    <button id="history-toggle-btn" class="text-sm text-blue-600 hover:text-blue-800 font-medium py-2 px-4 rounded-lg bg-blue-50 hover:bg-blue-100 transition">공부 기록 숨기기</button>
+                    <button id="clear-history-btn" class="text-sm text-red-600 hover:text-red-800 font-medium py-2 px-4 rounded-lg bg-red-50 hover:bg-red-100 transition">전체 기록 삭제</button>
+                </div>
+            </div>
+            <div id="history-container" class="space-y-4 max-h-[30rem] overflow-y-auto p-4 bg-gray-50 rounded-lg border">
+                <div id="history-log" class="space-y-4">
+                    <p class="text-gray-500">공부 기록을 불러오는 중입니다...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 피드백 폼 섹션 -->
+        <section class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">앱 피드백</h3>
+            <p class="text-gray-600 mb-4">
+                앱을 사용하시면서 느낀 좋은 점, 불편한 점, 개선 아이디어 등을 자유롭게 남겨주세요!
+                (<a href="https://blog.naver.com/codenamedream" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">https://blog.naver.com/codenamedream</a> 링크를 누르면 블로그로 이동합니다.)
+            </p>
+            <form id="feedback-form">
+                <label for="feedback-text" class="sr-only">피드백 내용</label>
+                <textarea id="feedback-text" class="w-full h-28 p-3 bg-gray-50 border border-gray-300 rounded-lg shadow-inner focus:ring-blue-500 focus:border-blue-500" placeholder="여기에 의견을 입력하세요..."></textarea>
+                <button id="feedback-submit-btn" type="submit" class="w-full mt-4 bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-gray-800 transition duration-200">
+                    의견 제출하기
+                </button>
+                <p id="feedback-message" class="hidden text-sm mt-2"></p>
+            </form>
+        </section>
+
+    </div>
+
+    <!-- 기록 삭제 확인 모달 -->
+    <div id="confirmModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
+        <div class="bg-white rounded-lg shadow-2xl max-w-sm w-full p-6">
+            <h4 class="text-xl font-bold text-gray-900 mb-2">정말 삭제하시겠습니까?</h4>
+            <p class="text-gray-600 mb-6">모든 공부 기록이 영구적으로 삭제되며, 복구할 수 없습니다.</p>
+            <div class="flex justify-end gap-3">
+                <button id="cancelDeleteBtn" class="py-2 px-4 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition font-medium">
+                    취소
+                </button>
+                <button id="confirmDeleteBtn" class="py-2 px-4 rounded-lg bg-red-600 text-white hover:bg-red-700 transition font-medium">
+                    삭제 확인
+                </button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
