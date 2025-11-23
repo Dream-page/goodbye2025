@@ -3,923 +3,1504 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2026 초등 임용 영어 면접 연습</title>
-    <!-- Tailwind CSS 로드 -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK 로드 -->
+    <title>2025 어드벤트 캘린더</title>
+    <!-- Tailwind CSS 로드 --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome 아이콘 로드 --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts (Gaegu) --><link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
+    <!-- HTML을 이미지로 바꾸기 위한 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- 엑셀 파일(xlsx)을 읽기 위한 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- (★신규★) Firebase SDK 11.6.1 로드 -->
     <script type="module">
-        // Firebase 앱 초기화
+        // Firebase SDKs
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // Firebase Auth 서비스
-        import { 
-            getAuth, 
-            signInAnonymously, 
-            onAuthStateChanged 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Firestore 서비스
-        import { 
-            getFirestore, 
-            collection, 
-            doc, // 문서 참조용
-            addDoc, 
-            setDoc, // 방문자 수 초기화용
-            updateDoc, // 방문자 수 업데이트용
-            increment, // 숫자 증가용
-            query, 
-            onSnapshot, 
-            serverTimestamp,
-            setLogLevel,
-            getDocs, 
-            writeBatch 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, setLogLevel, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Firebase 및 앱 설정 ---
-        let db, auth, userId;
-        let practiceCollectionRef;
-        
-        // 사용자가 제공한 Firebase 설정 값
+        // (★ 2단계 ★) 
+        // 이곳에 Google Firebase 콘솔에서 복사한
+        // firebaseConfig 객체를 붙여넣으세요.
         const firebaseConfig = {
-            apiKey: "AIzaSyBo9J3psRdM1Fh6JW7G8UYcgJGxQXmv9dk", // Firebase SDK 키
-            authDomain: "advent-calendar-1f508.firebaseapp.com",
-            projectId: "advent-calendar-1f508",
-            storageBucket: "advent-calendar-1f508.firebasestorage.app",
-            messagingSenderId: "724448812706",
-            appId: "1:724448812706:web:fedf4d00d9f147f3b8c1fb",
-            measurementId: "G-6CDELFGGB3"
+          apiKey: "AIzaSyBo9J3psRdM1Fh6JW7G8UYcgJGxQXmv9dk",
+  authDomain: "advent-calendar-1f508.firebaseapp.com",
+  projectId: "advent-calendar-1f508",
+  storageBucket: "advent-calendar-1f508.firebasestorage.app",
+  messagingSenderId: "724448812706",
+  appId: "1:724448812706:web:fedf4d00d9f147f3b8c1fb",
+  measurementId: "G-6CDELFGGB3"
         };
+
+        // --- (★실전용★) 한국 표준시(KST) 기준 현재 날짜 설정 ---
+        const KST_OFFSET = 9 * 60 * 60 * 1000; // 9시간(ms)
+        const NOW = new Date();
+        const UTC = NOW.getTime() + (NOW.getTimezoneOffset() * 60 * 1000);
+        const TODAY = new Date(UTC + KST_OFFSET);
+        // --- 테스트용 날짜 (주석 처리) ---
+        // const DEMO_DATE = new Date('2025-12-24T00:00:00'); // 24일 테스트용
+        // const TODAY = DEMO_DATE;
         
-        // [중요] 403 오류 해결을 위해 Google AI Studio (https://aistudio.google.com/app/apikey)에서
-        // 발급받은 **Gemini API 키**를 여기에 입력하세요.
-        // 예: const apiKey = "AIzaSyAwozb5p5QBA0rSdzTSRbO92fF83u_cU5M";
-        const apiKey = "AIzaSyAwozb5p5QBA0rSdzTSRbO92fF83u_cU5M"; // <--- 403 오류 해결을 위해 이 키를 교체하세요.
+        const CURRENT_DAY = TODAY.getDate();
+        const CURRENT_MONTH = TODAY.getMonth() + 1; // (0 = 1월, 11 = 12월)
 
-        // Firebase 초기화
-        try {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            // setLogLevel('Debug'); // 배포 시에는 로그 레벨 조정 가능
-            console.log("Firebase initialized successfully.");
-        } catch (e) {
-            console.error("Error initializing Firebase: ", e);
-            document.getElementById('main-app').innerHTML = '<p class="text-red-500 text-center">Firebase 초기화에 실패했습니다. config 정보를 확인하세요.</p>';
-        }
+        // --- 데이터베이스 (질문, 좌표, 관리자 비번 등) ---
 
-        // --- UI 요소 참조 ---
-        const questionDisplay = document.getElementById('question-display');
-        const recordBtn = document.getElementById('record-btn');
-        const userAnswerTextarea = document.getElementById('user-answer');
-        const submitBtn = document.getElementById('submit-btn');
-        const recordingSection = document.getElementById('recording-section');
-        
-        const feedbackSection = document.getElementById('feedback-section');
-        const loadingSpinner = document.getElementById('loading-spinner');
-        const submittedAnswerDisplay = document.getElementById('submitted-answer-display');
-        const modelAnswerDisplay = document.getElementById('model-answer-display');
-        const aiFeedbackDisplay = document.getElementById('ai-feedback-display');
-        const nextBtn = document.getElementById('next-btn');
-        
-        const historyLog = document.getElementById('history-log');
-        const historyToggleBtn = document.getElementById('history-toggle-btn');
-        const historyContainer = document.getElementById('history-container');
-        const clearHistoryBtn = document.getElementById('clear-history-btn');
-        
-        const confirmModal = document.getElementById('confirmModal');
-        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
-        const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+        // 1. 기본 학생 명단 (DB에 갱신된 명단이 없을 경우 사용됨)
+        const defaultStudentDB = [
+          { id: 'student1', name: '김철수', pass: '1234' },
+          { id: 'student2', name: '이영희', pass: '5678' },
+          { id: 'student3', name: '박지성', pass: '0000' },
+          { id: 'student_test', name: '테스트', pass: '1111' }
+        ];
 
-        // 피드백 폼 요소
-        const feedbackForm = document.getElementById('feedback-form');
-        const feedbackText = document.getElementById('feedback-text');
-        const feedbackSubmitBtn = document.getElementById('feedback-submit-btn');
-        const feedbackMessage = document.getElementById('feedback-message');
-        
-        // 방문자 수 요소
-        const visitorCountDisplay = document.getElementById('visitor-count-display');
-        
-        // 오류 표시줄
-        const errorDisplay = document.getElementById('error-display');
+        // 2. 25일간의 질문 (★고정★)
+        const questionsDB = [
+            "올해 가장 크게 웃었던 재미있는 일은 무엇이었나요?", // 1
+            "올해 새로 사귄 친구가 있나요? 그 친구의 좋은 점은?", // 2
+            "올해 먹었던 음식 중에 '진짜 최고!'였던 것은 무엇인가요?", // 3
+            "올해 내가 나 자신에게 '참 잘했다'고 칭찬해주고 싶은 일은?", // 4
+            "올해 나에게 가장 고마웠던 사람은 누구인가요?", // 5
+            "올해 학교에서 가장 재미있었던 수업이나 놀이는 뭐였나요?", // 6
+            "올해 새로 배운 것 중에 가장 신기하고 재미있었던 것은?", // 7
+            "올해 친구와 가장 신나게 놀았던 기억은? ", // 8
+            "올해 받은(또는 준) '선물' 중에 가장 기억에 남는 것은?", // 9
+            "올해 내가 그린 그림이나 만든 것 중에 가장 마음에 드는 것은?", // 10
+            "올해 가봤던 곳 중에 가장 기억에 남는 장소는 어디인가요?", // 11
+            "올해 나를 가장 행복하게 했던 노래(또는 책, 영화)는?", // 12
+            "올해 내가 '용기'를 냈던 멋진 순간은 언제였나요?", // 13
+            "올해가 가기 전에 꼭 \"고마워!\" 하고 말하고 싶은 사람은?", // 14
+            "올해 우리 반에서 있었던 일 중에 가장 기억에 남는 일은?", // 15
+            "올해 내가 '꾸준히' 노력해서 뿌듯했던 일이 있나요?", // 16
+            "올해 가장 재미있게 읽은 책이나 만화책은 무엇인가요?", // 17
+            "올해 가장 마음이 편안하고 따뜻했던 장소는 어디였나요?", // 18
+            "1년 전의 나보다 지금의 내가 더 잘하게 된 것은 무엇인가요?", // 19
+            "내년의 나에게 꼭 해주고 싶은 조언 한 가지는?", // 20
+            "내년에 내가 꼭 해보고 싶은 '새로운' 일 한 가지는?", // 21
+            "내년에 꼭 가보고 싶은 곳이 있나요? (상상의 장소도 좋아요!)", // 22
+            "올해의 나를 한 단어로 표현한다면 무엇이고 그 이유는?", // 23
+            "2025년 한 해를 보낸 나 자신에게 해주고 싶은 칭찬 한마디!", // 24
+            "메리 크리스마스! 🎄 2025년, 내년에는 어떤 멋진 일이 기다리고 있을까요?" // 25
+        ];
 
-        // --- 음성 인식 설정 ---
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let recognition;
-        let isRecording = false;
-        let currentTranscript = "";
-
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.lang = 'en-US'; 
-            recognition.interimResults = false;
-            recognition.continuous = true; 
-
-            recognition.onstart = () => {
-                isRecording = true;
-                recordBtn.disabled = false; // (수정) 다시 누를 수 있도록(중지) 활성화
-                recordBtn.innerHTML = `
-                    <svg class="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a3 3 0 116 0 3 3 0 01-6 0z"></path></svg>
-                    <span>녹음 중지</span>`;
-                recordBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
-                recordBtn.classList.add('bg-gray-700', 'hover:bg-gray-800');
-                currentTranscript = userAnswerTextarea.value; 
-                submitBtn.disabled = true;
-            };
-
-            recognition.onresult = (event) => {
-                let transcript = "";
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    transcript += event.results[i][0].transcript + " ";
-                }
-                currentTranscript = userAnswerTextarea.value + transcript; 
-                userAnswerTextarea.value = currentTranscript.trim();
-            };
-
-            recognition.onerror = (event) => {
-                console.error("Speech recognition error", event.error);
-                recordBtn.disabled = false; // (수정) 오류 발생 시 버튼 다시 활성화
-                if (errorDisplay) {
-                    errorDisplay.textContent = `음성 인식 오류: ${event.error}. 마이크 권한을 확인하고 페이지를 새로고침 해주세요.`;
-                    errorDisplay.classList.remove('hidden');
-                }
-            };
-
-            recognition.onend = () => {
-                isRecording = false;
-                recordBtn.disabled = false; // (수정) 녹음이 끝나면 버튼 다시 활성화
-                recordBtn.innerHTML = `
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zM10 15a5 5 0 005-5h-1.5a3.5 3.5 0 11-7 0H5a5 5 0 005 5z" clip-rule="evenodd"></path></svg>
-                    <span>녹음 시작</span>`;
-                recordBtn.classList.add('bg-red-600', 'hover:bg-red-700');
-                recordBtn.classList.remove('bg-gray-700', 'hover:bg-gray-800');
-                submitBtn.disabled = (userAnswerTextarea.value.trim().length === 0);
-            };
-
-            if (recordBtn) {
-                // (수정) 레이스 컨디션(경합) 방지를 위한 버튼 클릭 로직 수정
-                recordBtn.onclick = () => {
-                    if (isRecording) {
-                        recordBtn.disabled = true; // (수정) 중지 시 즉시 비활성화
-                        recordBtn.innerHTML = `... <span>처리 중...</span>`;
-                        recognition.stop();
-                    } else {
-                        recordBtn.disabled = true; // (수정) 시작 시 즉시 비활성화 (오류 방지)
-                        recordBtn.innerHTML = `... <span>시작 중...</span>`;
-                        try {
-                            recognition.start();
-                        } catch (e) {
-                            console.error("Failed to start recognition:", e);
-                            recordBtn.disabled = false; // (수정) 예외 발생 시 버튼 활성화
-                            // `onend`가 호출되지 않을 수 있으므로 UI 원상 복구
-                            isRecording = false;
-                            recordBtn.innerHTML = `... <span>녹음 시작</span>`;
-                            recordBtn.classList.add('bg-red-600', 'hover:bg-red-700');
-                            recordBtn.classList.remove('bg-gray-700', 'hover:bg-gray-800');
-                            if (errorDisplay) {
-                                errorDisplay.textContent = `음성 인식을 시작할 수 없습니다: ${e.message}`;
-                                errorDisplay.classList.remove('hidden');
-                            }
-                        }
-                    }
-                };
-            }
-
-        } else {
-            console.error("Speech Recognition not supported");
-            window.addEventListener('load', () => {
-                if (errorDisplay) {
-                    errorDisplay.textContent = '이 브라우저에서는 음성 인식을 지원하지 않습니다. Chrome 브라우저를 사용해 주세요.';
-                    errorDisplay.classList.remove('hidden');
-                }
-                if (recordingSection) recordingSection.classList.add('hidden'); 
-            });
-        }
-
-        // --- 질문 엔진 ---
-        const seedQuestions = [
-            "Choose a topic that can foster community competency and suggest two activities you want to do.",
-            "Suggest 2 effective teaching methods in-class, and 2 effective teaching methods after school to support slow-learner.",
-            "Suggest how to use English textbook when there is a learning gap between students and why.",
-            "Suggest two ways and effects of using AI and Digital devices for learning English.",
-            "Suggest physical and non-physical aspects of effective environment that you would consider for 3rd grade students.",
-            "Suggest two ways to provide individual feedback in online class while cooperating with the native teacher.",
-            "What is your opinion about global success of Korean culture?",
-            "Do you think that Artificial Intelligence (AI) can replace the human teacher?",
-            "Explain the two strategies that you used to engage students in the class in your demo lesson.",
-            "What makes the students keep the class rules constantly?",
-            "What is the most important factor of diminishing children's education gap?",
-            "How would you give hope to the students who lack of confidence?",
-            "Tell me about your turning point experience in life and describe it.",
-            "How will you manage a peaceful classroom without bullying?",
-            "Suggest 2 teaching materials and how to use them to integrate two language skills.",
-            "Describe your one short-term plan and one long-term plan to develop your teaching expertise.",
-            "Provide 2 ways to activate students' Schemata on the introduction stage in English lesson.",
-            "Tell us 2 criteria to choose and use storybook in English lesson.",
-            "Tell us 2 strategies to promote students to read more books.",
-            "Tell us 2 methods to increase students' English use in the classroom.",
-            "Tell us 2 strategies to promote students to cooperate in a group project.",
-            "Which one do you prefer typing or handwriting while taking a note during a lecture? Choose one, and tell 2 reasons.",
-            "What do you think is the ideal number of students in the class? Tell us 2 reasons.",
-            "If you had a chance to learn a language other than English, what language would you like to learn? Tell us 2 reasons.",
-            "As a teacher, how will you motivate students who are not interested in learning English? Provide two specific strategies.",
-            "How can you encourage students to actively participate in English class? Give us two specific methods.",
-            "Tell us 2 advantages of role play activitiy.", 
-            "Tell us two things you would like to do on your first vacation after becoming a teacher."
+        // 3. (★고정★) 1-25번 사용자 지정 좌표
+        const hotspotCoordinates = [
+            { top: '76.0%', left: '15.8%', size: '7.5%' },  // 1
+            { top: '81.5%', left: '27.0%', size: '7.5%' },  // 2
+            { top: '83.5%', left: '40.3%', size: '7.5%' },  // 3
+            { top: '83.5%', left: '51.8%', size: '7.5%' },  // 4
+            { top: '82.5%', left: '62.3%', size: '7.5%' },  // 5
+            { top: '78.5%', left: '74.3%', size: '7.5%' },  // 6
+            { top: '67%', left: '23.3%', size: '8%' },     // 7
+            { top: '70.5%', left: '33.8%', size: '8%' },     // 8
+            { top: '72.5%', left: '45.3%', size: '8%' },   // 9
+            { top: '72%', left: '55.9%', size: '8%' },     // 10
+            { top: '70%', left: '67.3%', size: '8%' },     // 11
+            { top: '53.5%', left: '25.8%', size: '8.5%' },  // 12
+            { top: '58%', left: '37.3%', size: '8.5%' },   // 13
+            { top: '59%', left: '46.8%', size: '8.5%' },   // 14
+            { top: '58%', left: '57.3%', size: '8.5%' },   // 15
+            { top: '56.5%', left: '67.3%', size: '8.5%' },  // 16
+            { top: '46.5%', left: '33.3%', size: '8.5%' },  // 17
+            { top: '46.5%', left: '47.3%', size: '8.5%' },  // 18
+            { top: '46.5%', left: '61.3%', size: '8.5%' },  // 19
+            { top: '37%', left: '40.0%', size: '9%' },     // 20
+            { top: '37%', left: '54.3%', size: '9%' },     // 21
+            { top: '23.5%', left: '40.0%', size: '9%' },   // 22
+            { top: '23.5%', left: '54.3%', size: '9%' },   // 23
+            { top: '14.5%', left: '47.3%', size: '9%' },    // 24
+            { top: '0.5%', left: '45.3%', size: '13%' }    // 25 (별)
         ];
         
-        let usedSeedQuestions = new Set();
-        let currentQuestion = "";
-        let allHistory = []; 
+        // --- 전역 변수 ---
+        let app, db, auth; // Firebase 인스턴스
+        let currentRoomId = null; // 사용자가 입력한 '학급/방 고유 ID'
+        let studentDB = [];
+        let currentStudentId = null;
+        let currentStudentName = null;
+        let userAnswers = {};
+        let adminSelectedAnswers = {};
+        let studentListUnsubscribe = null;
+        let userAnswersUnsubscribe = null;
+        let adminSelectedUnsubscribe = null;
 
-        async function loadNextQuestion() {
-            // (수정) 음성 인식이 진행 중이면 멈춤
-            if (isRecording) {
-                recognition.stop();
+        const ADMIN_PASS = "dream";
+        let snowCreated = false;
+
+        // --- DOM 요소 참조 ---
+        let roomIdPage, roomIdInput, roomIdSubmit, roomIdError, roomIdLoading;
+        let loginPage, mainPage, notesPage, resultsPage;
+        let nameInput, passInput, loginButton, loginError;
+        let studentNameHeader, calendarContainer, goToNotes, logoutButton;
+        let notesHeader, goToMain, notesContainer, downloadNotesButton;
+        let modal, modalTitle, modalQuestion, modalTextarea, modalSave, modalClose;
+        let adminSettingsButton, adminModal, adminModalClose, downloadExampleExcel, excelFileInput, uploadExcelButton, adminMessage, viewResultsButton;
+        let backToLoginButton, studentListContainer, studentResultDetail, resultDetailName, downloadAdminResultButton;
+        let adminPasswordModal, adminPasswordInput, adminPasswordSubmit, adminPasswordClose, adminPasswordError;
+        let congratsModal, congratsModalClose, snowContainer;
+        let loadingOverlay;
+
+        // --- 페이지 로드 시 초기화 ---
+        document.addEventListener('DOMContentLoaded', init);
+
+        function init() {
+            // --- DOM 요소 할당 ---
+            roomIdPage = document.getElementById('room-id-page');
+            roomIdInput = document.getElementById('room-id-input');
+            roomIdSubmit = document.getElementById('room-id-submit');
+            roomIdError = document.getElementById('room-id-error');
+            roomIdLoading = document.getElementById('room-id-loading');
+            
+            loginPage = document.getElementById('login-page');
+            mainPage = document.getElementById('main-page');
+            notesPage = document.getElementById('notes-page');
+            resultsPage = document.getElementById('results-page');
+            
+            nameInput = document.getElementById('name-input');
+            passInput = document.getElementById('pass-input');
+            loginButton = document.getElementById('login-button');
+            loginError = document.getElementById('login-error');
+            
+            studentNameHeader = document.getElementById('student-name-header');
+            calendarContainer = document.getElementById('calendar-image-container'); 
+            goToNotes = document.getElementById('go-to-notes');
+            logoutButton = document.getElementById('logout-button');
+
+            notesHeader = document.getElementById('notes-header');
+            goToMain = document.getElementById('go-to-main');
+            notesContainer = document.getElementById('notes-container');
+            downloadNotesButton = document.getElementById('download-notes-button'); 
+
+            modal = document.getElementById('modal');
+            modalTitle = document.getElementById('modal-title');
+            modalQuestion = document.getElementById('modal-question');
+            modalTextarea = document.getElementById('modal-textarea');
+            modalSave = document.getElementById('modal-save');
+            modalClose = document.getElementById('modal-close');
+            
+            adminSettingsButton = document.getElementById('admin-settings-button');
+            adminModal = document.getElementById('admin-modal');
+            adminModalClose = document.getElementById('admin-modal-close');
+            downloadExampleExcel = document.getElementById('download-example-excel');
+            excelFileInput = document.getElementById('excel-file-input');
+            uploadExcelButton = document.getElementById('upload-excel-button');
+            adminMessage = document.getElementById('admin-message');
+            viewResultsButton = document.getElementById('view-results-button');
+            
+            backToLoginButton = document.getElementById('back-to-login-button');
+            studentListContainer = document.getElementById('student-list-container');
+            studentResultDetail = document.getElementById('student-result-detail');
+            resultDetailName = document.getElementById('result-detail-name');
+            downloadAdminResultButton = document.getElementById('download-admin-result-button');
+
+            adminPasswordModal = document.getElementById('admin-password-modal');
+            adminPasswordInput = document.getElementById('admin-password-input');
+            adminPasswordSubmit = document.getElementById('admin-password-submit');
+            adminPasswordClose = document.getElementById('admin-password-close');
+            adminPasswordError = document.getElementById('admin-password-error');
+            
+            congratsModal = document.getElementById('congrats-modal');
+            congratsModalClose = document.getElementById('congrats-modal-close');
+            snowContainer = document.getElementById('snow-container');
+            loadingOverlay = document.getElementById('loading-overlay');
+
+            // --- 필수 요소 확인 (흰 화면 오류 방지) ---
+            if (!roomIdPage || !loginPage || !mainPage || !notesPage || !resultsPage || !adminPasswordModal || !congratsModal || !snowContainer || !loadingOverlay) {
+                console.error("필수 DOM 요소 중 일부를 찾을 수 없습니다. HTML ID를 확인하세요.");
+                document.body.innerHTML = '<h1 style="color: red; font-size: 24px; padding: 20px; text-align: center; background-color: white; color: black; height: 100vh; display: flex; align-items: center; justify-content: center;">오류: 페이지의 중요 요소를 불러오지 못했습니다. HTML ID가 올바른지 확인해주세요.</h1>';
+                return;
             }
             
-            if (feedbackSection) feedbackSection.classList.add('hidden');
-            if (recordingSection) recordingSection.classList.remove('hidden');
-            if (userAnswerTextarea) userAnswerTextarea.value = "";
-            if (submitBtn) submitBtn.disabled = true;
-            if (questionDisplay) {
-                questionDisplay.textContent = "새로운 질문을 생성 중입니다...";
-                questionDisplay.classList.add('animate-pulse');
-            }
-
-            let availableSeeds = seedQuestions.filter(q => !usedSeedQuestions.has(q));
-
-            if (availableSeeds.length > 0) {
-                currentQuestion = availableSeeds[Math.floor(Math.random() * availableSeeds.length)];
-                usedSeedQuestions.add(currentQuestion);
-                displayQuestion(currentQuestion);
+            // --- (배포용) Room ID 확인 및 Firebase 초기화 ---
+            currentRoomId = localStorage.getItem('roomId');
+            if (currentRoomId) {
+                showLoading("연결 중...");
+                initializeAppAndAuth(currentRoomId);
             } else {
-                await generateNewQuestion();
+                showRoomIdPage();
             }
-        }
 
-        function displayQuestion(question) {
-            currentQuestion = question;
-            if (questionDisplay) {
-                questionDisplay.textContent = currentQuestion;
-                questionDisplay.classList.remove('animate-pulse');
-            }
-        }
+            // --- 이벤트 리스너 ---
+            roomIdSubmit.addEventListener('click', handleRoomIdSubmit);
+            roomIdInput.addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') handleRoomIdSubmit();
+            });
 
-        async function generateNewQuestion() {
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            const examples = seedQuestions.sort(() => 0.5 - Math.random()).slice(0, 4).join('\n - ');
-
-            const payload = {
-                contents: [{
-                    parts: [{
-                        text: `You are an expert question generator for the Korean Elementary School Teacher Certification Exam (초등 임용고시) English interview. 
-                        Your sole purpose is to provide a single, high-quality interview question in English.
-                        The question must be in English. 
-                        Do not add any preamble, explanation, or quotation marks. Just return the single question text. 
-                        The question should be similar in style to these examples:\n - ${examples}`
-                    }]
-                }],
-                generationConfig: {
-                    maxOutputTokens: 100,
-                    temperature: 0.9,
-                }
-            };
-
-            try {
-                const response = await fetchWithExponentialBackoff(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) {
-                    if (response.status === 403) {
-                         throw new Error("Gemini API Key가 잘못되었거나 권한이 없습니다. Google AI Studio에서 키를 확인하세요.");
-                    }
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const result = await response.json();
-                
-                if (!result.candidates || !result.candidates[0].content || !result.candidates[0].content.parts[0].text) {
-                     if (result.candidates && result.candidates[0].finishReason === "SAFETY") {
-                         throw new Error("Response blocked due to safety settings.");
-                     }
-                    throw new Error("Invalid response structure from API.");
-                }
-
-                const newQuestion = result.candidates[0].content.parts[0].text.trim();
-                displayQuestion(newQuestion);
-            } catch (error) {
-                console.error("Error generating new question:", error);
-                displayQuestion("질문 생성 실패: " + error.message);
-            }
-        }
-
-        if (submitBtn) {
-            submitBtn.onclick = async () => {
-                // (수정) 음성 인식이 진행 중이면 멈춤
-                if (isRecording) {
-                    recognition.stop();
-                }
-                
-                const userAnswer = userAnswerTextarea.value;
-                if (userAnswer.trim().length === 0) return;
-
-                if (recordingSection) recordingSection.classList.add('hidden');
-                if (feedbackSection) feedbackSection.classList.remove('hidden');
-                if (loadingSpinner) loadingSpinner.classList.remove('hidden');
-                if (submittedAnswerDisplay) submittedAnswerDisplay.parentElement.classList.add('hidden');
-                if (modelAnswerDisplay) modelAnswerDisplay.parentElement.classList.add('hidden');
-                if (aiFeedbackDisplay) aiFeedbackDisplay.parentElement.classList.add('hidden');
-                if (nextBtn) nextBtn.classList.add('hidden');
-
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-
-                const systemPrompt = `You are an expert evaluator for the Korean Elementary Teacher Exam English interview.
-                The user needs to answer 2 questions in 5 minutes, so answers must be SIMPLE, CLEAR, and CONVERSATIONAL.
-                
-                You must provide:
-                1.  'feedback' (in KOREAN): Friendly, constructive feedback. Start by praising, then suggest simple improvements. Be encouraging. (예: "좋은 시도였어요! 문장을 조금 더 자연스럽게 다듬으면...")
-                2.  'modelAnswer' (in ENGLISH): This is the *most important* part.
-                    - It must be a SLIGHTLY IMPROVED version of the user's answer. Do NOT write a new, professional answer.
-                    - Use SIMPLE, COMMON English words. (like user's examples: "I can write more faster", "my handwriting is pretty bad", "storybook", "role play").
-                    - DO NOT use difficult or academic words (e.g., "frequently", "differentiated", "ensure", "implement", "personalized").
-                    - Keep it SHORT and DIRECT.
-                    - It MUST start with "I will tell you about..." or "I will explain..." or "I prefer...".
-                
-                Respond ONLY in this JSON format.`;
-                
-                const payload = {
-                    contents: [{
-                        parts: [{
-                            text: `Question: "${currentQuestion}"\n\nStudent's Answer: "${userAnswer}"`
-                        }]
-                    }],
-                    systemInstruction: {
-                        parts: [{ text: systemPrompt }]
-                    },
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                modelAnswer: { "type": "STRING", "description": "A slightly improved version of the user's answer, using simple English and starting with 'I will...'." },
-                                feedback: { "type": "STRING", "description": "Constructive feedback in KOREAN." }
-                            },
-                            required: ["modelAnswer", "feedback"]
-                        }
-                    }
-                };
-
-                try {
-                    const response = await fetchWithExponentialBackoff(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!response.ok) {
-                        if (response.status === 403) {
-                            throw new Error("Gemini API Key가 잘못되었거나 권한이 없습니다. Google AI Studio에서 키를 확인하세요.");
-                        }
-                        if (response.status === 400) {
-                            const errorBody = await response.json();
-                            if (errorBody.error && errorBody.error.message.includes("API key not valid")) {
-                                throw new Error("Gemini API Key가 유효하지 않습니다. (400 Bad Request)");
-                            } else {
-                                throw new Error(errorBody.error ? errorBody.error.message : "400 Bad Request");
-                            }
-                        }
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const result = await response.json();
-                    
-                    if (!result.candidates || !result.candidates[0].content || !result.candidates[0].content.parts[0].text) {
-                         if (result.candidates && result.candidates[0].finishReason === "SAFETY") {
-                             throw new Error("Response blocked due to safety settings.");
-                         }
-                        throw new Error("Invalid response structure from API.");
-                    }
-
-                    const jsonResponse = JSON.parse(result.candidates[0].content.parts[0].text);
-                    const { modelAnswer, feedback } = jsonResponse;
-
-                    if (submittedAnswerDisplay) submittedAnswerDisplay.textContent = userAnswer;
-                    if (modelAnswerDisplay) modelAnswerDisplay.textContent = modelAnswer;
-                    if (aiFeedbackDisplay) aiFeedbackDisplay.textContent = feedback;
-
-                    if (submittedAnswerDisplay) submittedAnswerDisplay.parentElement.classList.remove('hidden');
-                    if (modelAnswerDisplay) modelAnswerDisplay.parentElement.classList.remove('hidden');
-                    if (aiFeedbackDisplay) aiFeedbackDisplay.parentElement.classList.remove('hidden');
-                    if (nextBtn) nextBtn.classList.remove('hidden');
-
-                    if (userId) {
-                        await savePractice(currentQuestion, userAnswer, modelAnswer, feedback);
-                    }
-
-                } catch (error) {
-                    console.error("Error getting feedback:", error);
-                    if (aiFeedbackDisplay) {
-                        aiFeedbackDisplay.textContent = "피드백 생성 실패: " + error.message;
-                        aiFeedbackDisplay.parentElement.classList.remove('hidden');
-                    }
-                    if (nextBtn) nextBtn.classList.remove('hidden'); 
-                } finally {
-                    if (loadingSpinner) loadingSpinner.classList.add('hidden');
-                }
-            };
+            loginButton.addEventListener('click', handleLogin);
+            passInput.addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') handleLogin();
+            });
+            logoutButton.addEventListener('click', handleLogout);
+            goToNotes.addEventListener('click', showNotesPage);
+            goToMain.addEventListener('click', showMainPage);
+            downloadNotesButton.addEventListener('click', () => handleDownloadNotes(currentStudentId, currentStudentName)); 
+            
+            calendarContainer.addEventListener('click', handleCalendarClick);
+            
+            modalSave.addEventListener('click', handleModalSave);
+            modalClose.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+            
+            adminSettingsButton.addEventListener('click', openAdminPasswordModal);
+            adminModalClose.addEventListener('click', closeAdminModal);
+            adminModal.addEventListener('click', (e) => {
+                if (e.target === adminModal) closeAdminModal();
+            });
+            downloadExampleExcel.addEventListener('click', downloadExampleExcelFile);
+            uploadExcelButton.addEventListener('click', handleExcelUpload);
+            viewResultsButton.addEventListener('click', showResultsPage);
+            
+            backToLoginButton.addEventListener('click', () => {
+                if (adminSelectedUnsubscribe) adminSelectedUnsubscribe();
+                if (studentListUnsubscribe) studentListUnsubscribe();
+                showLoginPage();
+            });
+            studentListContainer.addEventListener('click', handleStudentResultClick);
+            downloadAdminResultButton.addEventListener('click', handleAdminDownloadNotes);
+            
+            adminPasswordClose.addEventListener('click', closeAdminPasswordModal);
+            adminPasswordModal.addEventListener('click', (e) => {
+                if (e.target === adminPasswordModal) closeAdminPasswordModal();
+            });
+            adminPasswordSubmit.addEventListener('click', handleAdminPasswordSubmit);
+            adminPasswordInput.addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') handleAdminPasswordSubmit();
+            });
+            
+            congratsModalClose.addEventListener('click', closeCongratsModal);
+            congratsModal.addEventListener('click', (e) => {
+                if (e.target === congratsModal) closeCongratsModal();
+            });
         }
         
-        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000) {
+        // --- Firebase 및 Room ID 관련 함수 ---
+
+        function showLoading(message) {
+            loadingOverlay.querySelector('p').textContent = message;
+            loadingOverlay.classList.remove('hidden');
+        }
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+        }
+
+        // Room ID 입력 페이지 표시
+        function showRoomIdPage() {
+            hideLoading();
+            roomIdPage.classList.remove('hidden');
+            loginPage.classList.add('hidden');
+            mainPage.classList.add('hidden');
+            notesPage.classList.add('hidden');
+            resultsPage.classList.add('hidden');
+        }
+        
+        // Room ID 제출 처리
+        function handleRoomIdSubmit() {
+            const roomId = roomIdInput.value.trim().replace(/[\/.]/g, ''); // Firestore 경로에 금지 문자 제거
+            if (roomId.length < 3) {
+                roomIdError.textContent = 'ID는 3글자 이상이어야 합니다.';
+                return;
+            }
+            roomIdError.textContent = '';
+            roomIdLoading.classList.remove('hidden');
+            roomIdSubmit.disabled = true;
+
+            // ID 저장 및 Firebase 초기화
+            localStorage.setItem('roomId', roomId);
+            currentRoomId = roomId;
+            initializeAppAndAuth(roomId);
+        }
+
+        // Firebase 초기화 (배포용)
+        async function initializeAppAndAuth(roomId) {
             try {
-                const response = await fetch(url, options);
-                if (response.status === 403 || response.status === 400) {
-                    return response;
+                // (★배포용★) 2단계에서 붙여넣은 firebaseConfig 사용
+                if (!firebaseConfig.apiKey) {
+                    throw new Error("Firebase: firebaseConfig가 설정되지 않았습니다. (2단계 확인)");
                 }
-                if (response.status === 429 && retries > 0) { 
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
-                }
-                if (!response.ok && response.status >= 500 && retries > 0) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
-                }
-                return response;
-            } catch (error) { 
-                if (retries > 0) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
-                }
-                throw error;
-            }
-        }
 
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('Debug');
 
-        // --- Firestore 연동 (개인 기록) ---
-        async function savePractice(question, userAnswer, modelAnswer, feedback) {
-            try {
-                if (!practiceCollectionRef) return;
-                await addDoc(practiceCollectionRef, {
-                    question: question,
-                    userAnswer: userAnswer,
-                    modelAnswer: modelAnswer,
-                    feedback: feedback,
-                    timestamp: serverTimestamp()
-                });
-            } catch (e) {
-                console.error("Error adding document: ", e);
-            }
-        }
-
-        function loadHistory() {
-            if (!practiceCollectionRef) return;
-            const q = query(practiceCollectionRef);
-            onSnapshot(q, (snapshot) => {
-                if (!historyLog) return;
-                historyLog.innerHTML = ""; 
-                allHistory = []; 
+                // (★배포용★) 익명 인증만 사용
+                await signInAnonymously(auth);
                 
-                if (snapshot.empty) {
-                    historyLog.innerHTML = '<p class="text-gray-500">아직 공부 기록이 없습니다.</p>';
-                    return;
-                }
-                
-                snapshot.forEach((doc) => {
-                    allHistory.push(doc.data());
+                onAuthStateChanged(auth, (user) => {
+                    if (user) console.log("Firebase 익명 인증 성공:", user.uid);
                 });
 
-                allHistory.sort((a, b) => {
-                    const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
-                    const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
-                    return timeB - timeA;
-                });
+                // 학생 DB 로드 (Firebase)
+                await loadStudentDB(); 
 
-                renderHistory(allHistory);
-            }, (error) => { 
-                console.error("Error loading history:", error);
-                if (historyLog) historyLog.innerHTML = `<p class="text-red-500">공부 기록 로드 실패: ${error.message}. Firestore 규칙을 확인하세요.</p>`;
-            });
-        }
+                const storedId = localStorage.getItem('currentStudentId');
+                const storedName = localStorage.getItem('currentStudentName');
 
-        function renderHistory(historyData) {
-            if (!historyLog) return;
-            historyLog.innerHTML = ""; 
-            
-            if (historyData.length === 0) {
-                 historyLog.innerHTML = '<p class="text-gray-500">아직 공부 기록이 없습니다.</p>';
-                 return;
-            }
+                hideLoading();
 
-            historyData.forEach((data) => {
-                const logEntry = document.createElement('div');
-                logEntry.className = "bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-3";
-                logEntry.innerHTML = `
-                    <h5 class="font-semibold text-gray-800">질문: ${data.question}</h5>
-                    <div class="border-t pt-2">
-                        <p class="text-sm font-medium text-blue-700">나의 답변:</p>
-                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${data.userAnswer || ''}</p>
-                    </div>
-                    <div class="border-t pt-2">
-                        <p class="text-sm font-medium text-green-700">모범 답안 (AI):</p>
-                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${data.modelAnswer || ''}</p>
-                    </div>
-                    <div class="border-t pt-2">
-                        <p class="text-sm font-medium text-yellow-800">AI 피드백 (한국어):</p>
-                        <p class="text-sm text-gray-700 whitespace-pre-wrap">${data.feedback || ''}</p>
-                    </div>
-                    <p class="text-xs text-gray-400 text-right">${data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString('ko-KR') : '날짜 없음'}</p>
-                `;
-                historyLog.appendChild(logEntry);
-            });
-        }
-
-        // --- 총 방문자 수 로직 (세션당 1회) ---
-        function setupVisitorCounter() {
-            const statsDocRef = doc(db, "meta", "stats");
-
-            // (수정) 중복 카운트 방지 로직 강화
-            const sessionKey = 'visitorCounted';
-            if (!sessionStorage.getItem(sessionKey)) {
-                // (수정) 세션 저장소를 *먼저* 설정합니다.
-                // 스크립트가 Firebase 호출 후 .then() 전에 멈추더라도
-                // 새로고침 시 중복 카운트되는 것을 방지합니다.
-                sessionStorage.setItem(sessionKey, 'true'); 
-                console.log("Setting session key and incrementing count...");
-
-                setDoc(statsDocRef, { visitorCount: increment(1) }, { merge: true })
-                    .then(() => {
-                        console.log("Visitor count incremented successfully.");
-                    })
-                    .catch((e) => {
-                        // (수정) 카운트 실패 시, 다음 방문을 위해 세션 키를 지우지 *않습니다*.
-                        // (오류가 나도 이 세션에서는 이미 시도한 것으로 간주)
-                        console.error("Error incrementing visitor count:", e);
-                        if (visitorCountDisplay) {
-                            visitorCountDisplay.textContent = `방문자 수 오류`;
-                        }
-                        if (errorDisplay) {
-                            errorDisplay.textContent = `방문자 수 집계 실패: Firestore 'meta/stats' 문서에 대한 쓰기 권한을 확인하세요. (오류: ${e.message})`;
-                            errorDisplay.classList.remove('hidden');
-                        }
-                    });
-            } else {
-                console.log("Visitor already counted for this session.");
-            }
-
-            // 실시간 리스너 (UI 표시용)
-            onSnapshot(statsDocRef, (docSnapshot) => {
-                if (docSnapshot.exists()) {
-                    const data = docSnapshot.data();
-                    const count = data.visitorCount || 0;
-                    if (visitorCountDisplay) {
-                        visitorCountDisplay.textContent = `총 방문자: ${count.toLocaleString()}명`;
-                    }
+                if (storedId && storedName) {
+                    currentStudentId = storedId;
+                    currentStudentName = storedName;
+                    showMainPage();
                 } else {
-                     if (visitorCountDisplay) {
-                        visitorCountDisplay.textContent = `총 방문자: 0명`;
+                    showLoginPage();
+                }
+
+            } catch (err) {
+                console.error("Firebase 초기화 또는 인증 오류:", err);
+                hideLoading();
+                roomIdLoading.classList.add('hidden');
+                roomIdSubmit.disabled = false;
+                
+                if (err.message.includes("auth/configuration-not-found")) {
+                     roomIdError.textContent = `[오류] Firebase '익명 로그인'이 비활성화되었습니다. (3단계 확인)`;
+                } else {
+                     roomIdError.textContent = `연결 오류: ${err.message}. 새로고침하세요.`;
+                }
+                localStorage.removeItem('roomId');
+            }
+        }
+
+        // --- 페이지 전환 함수 ---
+        function showLoginPage() {
+            hideLoading();
+            roomIdPage.classList.add('hidden');
+            loginPage.classList.remove('hidden'); 
+            mainPage.classList.add('hidden');
+            notesPage.classList.add('hidden');
+            resultsPage.classList.add('hidden');
+            closeAdminModal();
+            closeAdminPasswordModal();
+            if (userAnswersUnsubscribe) userAnswersUnsubscribe();
+            if (studentListUnsubscribe) studentListUnsubscribe();
+            if (adminSelectedUnsubscribe) adminSelectedUnsubscribe();
+        }
+
+        function showMainPage() {
+            showLoading("캘린더 로딩 중...");
+            loginPage.classList.add('hidden');
+            mainPage.classList.remove('hidden'); 
+            notesPage.classList.add('hidden');
+            resultsPage.classList.add('hidden');
+            
+            studentNameHeader.textContent = `${currentStudentName}님의 2025년 캘린더`;
+            
+            attachUserAnswersListener();
+
+            const treeImage = new Image();
+            treeImage.onload = function() {
+                hideLoading();
+            };
+            treeImage.onerror = function() {
+                hideLoading();
+                console.error("트리 이미지를 로드할 수 없습니다.");
+                calendarContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center bg-red-900 text-white p-4 text-center rounded-lg">
+                    <p class="text-xl"><i class="fas fa-exclamation-triangle mr-2"></i> 캘린더 이미지를 불러오는 데 실패했습니다.<br>인터넷 연결을 확인하거나 나중에 다시 시도해주세요.</p>
+                </div>`;
+            }
+            treeImage.src = 'https://i.imgur.com/gf0wfmi.jpeg';
+        }
+
+        function showNotesPage() {
+            loginPage.classList.add('hidden');
+            mainPage.classList.add('hidden');
+            notesPage.classList.remove('hidden');
+            resultsPage.classList.add('hidden');
+            
+            notesHeader.textContent = `${currentStudentName}님의 2025년 쪽지함`;
+            renderNotes();
+        }
+
+        function showResultsPage() {
+            loginPage.classList.add('hidden');
+            mainPage.classList.add('hidden');
+            notesPage.classList.add('hidden');
+            resultsPage.classList.remove('hidden');
+            
+            closeAdminModal(); 
+            
+            renderStudentList();
+            
+            resultDetailName.textContent = "학생을 선택하세요";
+            studentResultDetail.innerHTML = '<p class="text-xl text-center p-8">왼쪽에서 학생을 선택하면<br>작성한 쪽지 내용을 볼 수 있습니다.</p>';
+            downloadAdminResultButton.classList.add('hidden');
+        }
+
+        // --- 관리자 모달 제어 ---
+        function openAdminPasswordModal() {
+            adminPasswordModal.classList.remove('hidden');
+            setTimeout(() => {
+                adminPasswordModal.classList.remove('opacity-0');
+                adminPasswordModal.querySelector('.modal-content').classList.remove('scale-95');
+                adminPasswordInput.focus();
+            }, 10);
+        }
+        function closeAdminPasswordModal() {
+            adminPasswordModal.classList.add('opacity-0');
+            adminPasswordModal.querySelector('.modal-content').classList.add('scale-95');
+            setTimeout(() => {
+                adminPasswordModal.classList.add('hidden');
+                adminPasswordInput.value = '';
+                adminPasswordError.textContent = '';
+            }, 300);
+        }
+        function handleAdminPasswordSubmit() {
+            if (adminPasswordInput.value === ADMIN_PASS) {
+                closeAdminPasswordModal();
+                openAdminModal();
+            } else {
+                adminPasswordError.textContent = '비밀번호가 일치하지 않습니다.';
+                adminPasswordInput.value = '';
+                adminPasswordInput.focus();
+            }
+        }
+        function openAdminModal() {
+            adminModal.classList.remove('hidden');
+            setTimeout(() => {
+                adminModal.classList.remove('opacity-0');
+                adminModal.querySelector('.modal-content').classList.remove('scale-95');
+            }, 10);
+        }
+        function closeAdminModal() {
+            adminModal.classList.add('opacity-0');
+            adminModal.querySelector('.modal-content').classList.add('scale-95');
+            setTimeout(() => {
+                adminModal.classList.add('hidden');
+                adminMessage.textContent = '';
+                excelFileInput.value = '';
+            }, 300);
+        }
+
+
+        // --- (★배포용★) 핵심 로직 함수 (Firebase 연동) ---
+        
+        // 0. 학생 DB 로드 (Firebase)
+        async function loadStudentDB() {
+            // (★배포용★) DB 경로: /{currentRoomId}/config
+            const docRef = doc(db, currentRoomId, 'config');
+            try {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists() && docSnap.data().list) {
+                    studentDB = docSnap.data().list;
+                    console.log("Firebase에서 학생 DB를 로드했습니다.");
+                } else {
+                    studentDB = [...defaultStudentDB];
+                    console.log("Firebase에 학생 DB가 없어 기본 DB를 로드합니다.");
+                }
+            } catch (err) {
+                console.error("학생 DB 로드 오류:", err);
+                studentDB = [...defaultStudentDB];
+            }
+        }
+        
+        // 1. 로그인 처리
+        function handleLogin() {
+            const name = nameInput.value.trim();
+            const pass = passInput.value.trim();
+            
+            const user = studentDB.find(student => student.name === name && String(student.pass) === pass);
+
+            if (user) {
+                currentStudentId = user.id;
+                currentStudentName = user.name;
+                localStorage.setItem('currentStudentId', user.id);
+                localStorage.setItem('currentStudentName', user.name);
+                
+                nameInput.value = '';
+                passInput.value = '';
+                loginError.textContent = '';
+                
+                showMainPage();
+            } else {
+                loginError.textContent = '이름이나 비밀번호를 다시 확인해주세요!';
+                loadStudentDB();
+            }
+        }
+        
+        // 2. 로그아웃 처리
+        function handleLogout() {
+            localStorage.removeItem('currentStudentId');
+            localStorage.removeItem('currentStudentName');
+            localStorage.removeItem('roomId'); // (★추가★) 로그아웃 시 Room ID도 초기화
+            currentStudentId = null;
+            currentStudentName = null;
+            currentRoomId = null;
+            userAnswers = {};
+            showRoomIdPage(); // (★수정★) 로그인 대신 Room ID 페이지로
+        }
+
+        // 3. 캘린더 핫스팟 렌더링
+        function renderCalendar() {
+            calendarContainer.innerHTML = '';
+            
+            if (CURRENT_MONTH !== 12) {
+                 // 12월이 아닐 경우 테스트 모드임을 알림 (실제 잠금은 isLocked에서 처리)
+                 console.log(`[TEST MODE] 현재 날짜를 ${CURRENT_MONTH}월 ${CURRENT_DAY}일로 설정합니다.`);
+            }
+            
+            // (★수정★) 24일에는 25일까지 열리도록 설정 (unlockLimit)
+            let unlockLimit = CURRENT_DAY;
+            if (CURRENT_MONTH === 12 && CURRENT_DAY === 24) {
+                unlockLimit = 25;
+            }
+
+            for (let i = 1; i <= 25; i++) {
+                const day = i;
+                const answer = userAnswers[`day_${day}`]; 
+                
+                // (★수정★) unlockLimit 사용
+                const isLocked = (CURRENT_MONTH !== 12 || day > unlockLimit); 
+                const isAnswered = answer !== null && answer !== undefined && answer.trim() !== '';
+                const isUnlocked = !isLocked && !isAnswered;
+                
+                const daySpot = document.createElement('div');
+                daySpot.classList.add('day-hotspot'); 
+                daySpot.classList.add('absolute', 'transition-all', 'duration-300', 'transform');
+                
+                if (day === 25) {
+                    daySpot.classList.add('day-star'); 
+                } else {
+                    daySpot.classList.add('rounded-full'); 
+                }
+
+                if (isLocked) {
+                    daySpot.classList.add('day-locked', 'bg-gray-800', 'bg-opacity-60', 'cursor-not-allowed');
+                } else if (isAnswered) {
+                    daySpot.classList.add('day-answered', 'bg-yellow-300', 'bg-opacity-50', 'cursor-pointer');
+                } else {
+                    daySpot.classList.add('day-unlocked', 'cursor-pointer');
+                    if (day === 25) {
+                        daySpot.classList.add('bg-white', 'bg-opacity-50', 'hover:bg-white', 'hover:bg-opacity-75');
+                    } else {
+                        daySpot.classList.add('bg-white', 'bg-opacity-40', 'hover:bg-white', 'hover:bg-opacity-60');
                     }
                 }
-            }, (error) => { 
-                console.error("Error listening to visitor count:", error);
-                if (visitorCountDisplay) {
-                    visitorCountDisplay.textContent = `방문자 수 로드 실패`;
+
+                const coords = hotspotCoordinates[day - 1];
+                if (coords) {
+                    daySpot.style.top = coords.top;
+                    daySpot.style.left = coords.left;
+                    daySpot.style.width = coords.size;
+                    daySpot.style.height = coords.size;
+                } else {
+                    console.warn(`Day ${day}의 좌표가 없습니다.`);
+                    continue; 
                 }
+
+                if (!isLocked) {
+                    daySpot.dataset.day = day; 
+                }
+                
+                calendarContainer.appendChild(daySpot);
+            }
+        }
+
+        // 4. 캘린더 클릭 처리
+        function handleCalendarClick(e) {
+            const daySpot = e.target.closest('.day-hotspot'); 
+            if (daySpot && !daySpot.classList.contains('day-locked')) {
+                const day = daySpot.dataset.day;
+                if (day) {
+                    openModal(day); 
+                }
+            }
+        }
+
+        // 5. 모달(팝업) 열기
+        function openModal(day) {
+            const questionIndex = day - 1; 
+            if (questionIndex < 0 || questionIndex >= questionsDB.length) return; 
+            
+            const question = questionsDB[questionIndex];
+            const savedAnswer = userAnswers[`day_${day}`];
+            
+            modal.dataset.day = day; 
+            modalTitle.textContent = `12월 ${day}일의 질문`;
+            modalQuestion.textContent = `Q. ${question}`;
+            modalTextarea.value = savedAnswer || '';
+            
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modal.querySelector('.modal-content').classList.remove('scale-95');
+            }, 10);
+        }
+
+        // 6. 모달 닫기
+        function closeModal() {
+            modal.classList.add('opacity-0');
+            modal.querySelector('.modal-content').classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        // 7. 답변 저장 처리
+        async function handleModalSave() {
+            const day = modal.dataset.day;
+            const answer = modalTextarea.value.trim();
+            
+            const wasCompleted = checkCompletion();
+            
+            // (★배포용★) DB 경로: /{currentRoomId}/{studentId}
+            const docRef = doc(db, currentRoomId, currentStudentId);
+            
+            try {
+                await setDoc(docRef, {
+                    [`day_${day}`]: answer
+                }, { merge: true });
+
+                closeModal();
+
+                userAnswers[`day_${day}`] = answer;
+                const isCompleted = checkCompletion();
+                if (isCompleted && !wasCompleted) {
+                    showSnow();
+                    showCongratsModal();
+                }
+
+            } catch (err) {
+                console.error("답변 저장 오류:", err);
+                alert("답변 저장 중 오류가 발생했습니다. 다시 시도해주세요.");
+            }
+        }
+
+        // 8. 쪽지 모아보기 렌더링
+        function renderNotes() {
+            notesContainer.innerHTML = '';
+            let notesFound = false;
+
+            for (let i = 1; i <= 25; i++) {
+                const day = i;
+                const answer = userAnswers[`day_${day}`];
+                
+                if (answer !== null && answer !== undefined && answer.trim() !== '') {
+                    notesFound = true;
+                    const questionIndex = day - 1;
+                    if (questionIndex < 0 || questionIndex >= questionsDB.length) continue; 
+                    
+                    const question = questionsDB[questionIndex];
+                    
+                    const noteItem = document.createElement('div');
+                    noteItem.className = "note-item bg-yellow-100 text-gray-900 p-4 rounded-md shadow-md mb-4";
+                    
+                    const h3 = document.createElement('h3');
+                    h3.className = "text-2xl font-bold mb-2 text-green-800";
+                    h3.textContent = `12월 ${day}일`;
+                    
+                    const strong = document.createElement('strong');
+                    strong.className = "text-xl text-gray-700";
+                    strong.textContent = `Q. ${question}`;
+                    
+                    const p = document.createElement('p');
+                    p.className = "text-xl mt-2 whitespace-pre-wrap";
+                    p.textContent = `A: ${answer}`;
+                    
+                    noteItem.appendChild(h3);
+                    noteItem.appendChild(strong);
+                    noteItem.appendChild(p);
+                    notesContainer.appendChild(noteItem);
+                }
+            }
+
+            if (!notesFound) {
+                notesContainer.innerHTML = '<p class="text-xl text-center p-8">아직 작성된 쪽지가 없어요. 캘린더에서 질문에 답해보세요!</p>';
+            }
+        }
+        
+        // 9. 모든 쪽지 이미지로 다운로드
+        function handleDownloadNotes(studentId, studentName) {
+            const exportContainer = document.getElementById('export-container');
+            if (!exportContainer) return;
+
+            const button = downloadNotesButton;
+            const originalButtonText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+            button.disabled = true;
+
+            exportContainer.innerHTML = ''; 
+            
+            const h1 = document.createElement('h1');
+            h1.textContent = `${studentName}님의 2025년 12월 이야기`;
+            exportContainer.appendChild(h1);
+
+            let notesFound = false;
+            for (let i = 1; i <= 25; i++) {
+                const day = i;
+                // (★배포용★) 현재 userAnswers에서 가져오기
+                const answer = userAnswers[`day_${day}`];
+                
+                if (answer !== null && answer !== undefined && answer.trim() !== '') {
+                    notesFound = true;
+                    const questionIndex = day - 1;
+                    if (questionIndex < 0 || questionIndex >= questionsDB.length) continue; 
+                    const question = questionsDB[questionIndex];
+                    
+                    const noteItem = document.createElement('div');
+                    noteItem.className = "note-item"; 
+                    const h3 = document.createElement('h3');
+                    h3.textContent = `12월 ${day}일`;
+                    const strong = document.createElement('strong');
+                    strong.textContent = `Q. ${question}`;
+                    const p = document.createElement('p');
+                    p.textContent = `A: ${answer}`;
+                    noteItem.appendChild(h3);
+                    noteItem.appendChild(strong);
+                    noteItem.appendChild(p);
+                    exportContainer.appendChild(noteItem);
+                }
+            }
+            if (!notesFound) {
+                 const p = document.createElement('p');
+                 p.textContent = "아직 작성된 쪽지가 없습니다.";
+                 exportContainer.appendChild(p);
+            }
+            setTimeout(() => {
+                html2canvas(exportContainer, { scale: 2, useCORS: true }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.href = canvas.toDataURL('image/png');
+                    link.download = `${studentId}_advent_notes_2025.png`;
+                    link.click();
+                    button.innerHTML = originalButtonText;
+                    button.disabled = false;
+                    exportContainer.innerHTML = '';
+                }).catch(err => {
+                    console.error("이미지 생성 오류:", err);
+                    alert("이미지 생성 중 오류가 발생했습니다.");
+                    button.innerHTML = originalButtonText; 
+                    button.disabled = false;
+                    exportContainer.innerHTML = '';
+                });
+            }, 500); 
+        }
+
+        // 10. 엑셀 예시 파일 다운로드
+        function downloadExampleExcelFile(e) {
+            e.preventDefault();
+            const exampleData = [ { name: "홍길동", pass: "1234" }, { name: "성춘향", pass: "5678" } ];
+            const ws = XLSX.utils.json_to_sheet(exampleData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "학생명단");
+            XLSX.writeFile(wb, "student_list_example.xlsx");
+        }
+
+        // 11. 엑셀 파일 업로드 처리
+        function handleReadError(err) {
+            console.error("파일 읽기 오류:", err);
+            adminMessage.textContent = '파일을 읽는 중 오류가 발생했습니다.';
+            adminMessage.classList.add('text-red-500');
+        }
+        function handleUploadError(err) {
+            console.error("엑셀/CSV 처리 오류:", err);
+            const defaultError = "파일에 'name'과 'pass' 컬럼이 누락되었거나 형식이 잘못되었습니다.";
+            adminMessage.textContent = `오류: ${err.message.includes('컬럼') || err.message.includes('데이터') ? err.message : defaultError}`;
+            adminMessage.classList.add('text-red-500');
+        }
+
+        async function processWorkbook(workbook) {
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            let newStudentList = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
+            
+            if (newStudentList.length > 0) {
+                const firstStudent = newStudentList[0];
+                if (firstStudent.hasOwnProperty('name') && firstStudent.hasOwnProperty('pass')) {
+                    
+                    const processedStudentList = newStudentList.map((student, index) => {
+                        return {
+                            id: `student_${index + 1}_${Date.now()}`,
+                            name: String(student.name || "").trim(),
+                            pass: String(student.pass || "").trim()
+                        };
+                    });
+
+                    // (★배포용★) DB 경로: /{currentRoomId}/config
+                    const docRef = doc(db, currentRoomId, 'config');
+                    try {
+                        await setDoc(docRef, { list: processedStudentList });
+                        
+                        adminMessage.textContent = `성공! ${processedStudentList.length}명의 학생 명단이 갱신되었습니다.`;
+                        adminMessage.classList.add('text-green-500');
+                        setTimeout(closeAdminModal, 2000);
+
+                    } catch (err) {
+                        console.error("Firebase 학생 명단 저장 오류:", err);
+                        throw new Error("DB 저장 중 오류가 발생했습니다.");
+                    }
+                    
+                } else {
+                    throw new Error("파일에 'name'과 'pass' 컬럼이 모두 포함되어야 합니다.");
+                }
+            } else {
+                throw new Error("엑셀/CSV 파일에 데이터가 없습니다.");
+            }
+        }
+
+        function handleExcelUpload() {
+            const file = excelFileInput.files[0];
+            if (!file) {
+                adminMessage.textContent = '파일을 선택해주세요.';
+                adminMessage.classList.add('text-red-500');
+                return;
+            }
+            adminMessage.textContent = '처리 중...';
+            adminMessage.classList.remove('text-red-500', 'text-green-500');
+
+            const reader = new FileReader();
+
+            if (file.name.endsWith('.xlsx')) {
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        processWorkbook(workbook);
+                    } catch (err) {
+                        handleUploadError(err);
+                    }
+                };
+                reader.onerror = handleReadError;
+                reader.readAsArrayBuffer(file);
+
+            } else if (file.name.endsWith('.csv')) {
+                reader.onload = function(e) {
+                    try {
+                        let data = e.target.result;
+                        if (data.startsWith('\uFEFF')) data = data.substring(1);
+                        const workbook = XLSX.read(data, { type: 'string' });
+                        processWorkbook(workbook);
+                    } catch (err) {
+                        handleUploadError(err);
+                    }
+                };
+                reader.onerror = handleReadError;
+                reader.readAsText(file);
+            } else {
+                adminMessage.textContent = '오류: .xlsx 또는 .csv 파일만 지원됩니다.';
+                adminMessage.classList.add('text-red-500');
+            }
+        }
+
+        // 12. 관리자 - 학생 목록 렌더링
+        function renderStudentList() {
+            // (★배포용★) DB 경로: /{currentRoomId}/config
+            const docRef = doc(db, currentRoomId, 'config');
+            
+            if (studentListUnsubscribe) studentListUnsubscribe();
+
+            studentListContainer.innerHTML = '<p>학생 목록 로딩 중...</p>';
+            
+            studentListUnsubscribe = onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists() && docSnap.data().list && docSnap.data().list.length > 0) {
+                    studentDB = docSnap.data().list;
+                    studentListContainer.innerHTML = '';
+                    
+                    studentDB.forEach(student => {
+                        const button = document.createElement('button');
+                        button.className = "student-list-button w-full text-left p-3 rounded-lg bg-green-800 hover:bg-green-700 transition-colors text-white text-xl";
+                        button.textContent = student.name;
+                        button.dataset.id = student.id;
+                        button.dataset.name = student.name;
+                        studentListContainer.appendChild(button);
+                    });
+                } else {
+                    studentDB = [...defaultStudentDB];
+                    studentListContainer.innerHTML = '<p>등록된 학생이 없습니다. (기본값 표시)</p>';
+                }
+            }, (err) => {
+                console.error("학생 목록 실시간 로드 오류:", err);
+                studentListContainer.innerHTML = '<p class="text-red-400">학생 목록 로드 중 오류 발생</p>';
             });
         }
 
-        // --- Google Form 피드백 ---
-        async function handleFeedbackSubmit(event) {
-            event.preventDefault(); 
+        // 13. 관리자 - 학생 목록 클릭 처리
+        function handleStudentResultClick(e) {
+            const button = e.target.closest('.student-list-button');
+            if (!button) return;
+
+            const studentId = button.dataset.id;
+            const studentName = button.dataset.name;
+
+            studentListContainer.querySelectorAll('.student-list-button').forEach(btn => {
+                btn.classList.remove('bg-yellow-400', 'text-green-900', 'font-bold');
+                btn.classList.add('bg-green-800', 'text-white');
+            });
+            button.classList.add('bg-yellow-400', 'text-green-900', 'font-bold');
+            button.classList.remove('bg-green-800', 'text-white');
+
+            renderStudentResultDetail(studentId, studentName);
+        }
+
+        // 14. 관리자 - 선택된 학생의 결과 렌더링
+        function renderStudentResultDetail(studentId, studentName) {
+            resultDetailName.textContent = `${studentName}님의 답변`;
+            studentResultDetail.innerHTML = '<p>답변 로딩 중...</p>';
             
-            const feedbackValue = feedbackText.value.trim();
-            if (feedbackValue.length === 0) {
-                feedbackMessage.textContent = "의견을 입력해주세요.";
-                feedbackMessage.className = "text-yellow-600 text-sm mt-2";
-                feedbackMessage.classList.remove('hidden');
+            // (★배포용★) DB 경로: /{currentRoomId}/{studentId}
+            const docRef = doc(db, currentRoomId, studentId);
+            
+            if (adminSelectedUnsubscribe) adminSelectedUnsubscribe();
+
+            adminSelectedUnsubscribe = onSnapshot(docRef, (docSnap) => {
+                adminSelectedAnswers = docSnap.exists() ? docSnap.data() : {};
+                studentResultDetail.innerHTML = '';
+                let notesFound = false;
+                
+                downloadAdminResultButton.dataset.id = studentId;
+                downloadAdminResultButton.dataset.name = studentName;
+                downloadAdminResultButton.classList.remove('hidden');
+
+                for (let i = 1; i <= 25; i++) {
+                    const day = i;
+                    const answer = adminSelectedAnswers[`day_${day}`];
+                    
+                    if (answer !== null && answer !== undefined && answer.trim() !== '') {
+                        notesFound = true;
+                        const questionIndex = day - 1;
+                        if (questionIndex < 0 || questionIndex >= questionsDB.length) continue; 
+                        
+                        const question = questionsDB[questionIndex];
+                        
+                        const noteItem = document.createElement('div');
+                        noteItem.className = "note-item bg-yellow-100 text-gray-900 p-4 rounded-md shadow-md mb-4";
+                        const h3 = document.createElement('h3');
+                        h3.className = "text-2xl font-bold mb-2 text-green-800";
+                        h3.textContent = `12월 ${day}일`;
+                        const strong = document.createElement('strong');
+                        strong.className = "text-xl text-gray-700";
+                        strong.textContent = `Q. ${question}`;
+                        const p = document.createElement('p');
+                        p.className = "text-xl mt-2 whitespace-pre-wrap";
+                        p.textContent = `A: ${answer}`;
+                        noteItem.appendChild(h3);
+                        noteItem.appendChild(strong);
+                        noteItem.appendChild(p);
+                        studentResultDetail.appendChild(noteItem);
+                    }
+                }
+                if (!notesFound) {
+                    studentResultDetail.innerHTML = '<p class="text-xl text-center p-8">아직 작성된 쪽지가 없습니다.</p>';
+                }
+            }, (err) => {
+                console.error("관리자용 학생 답변 로드 오류:", err);
+                studentResultDetail.innerHTML = '<p class="text-red-400">학생 답변 로드 중 오류 발생</p>';
+            });
+        }
+        
+        // 15. 관리자용 쪽지 이미지 다운로드
+        async function handleAdminDownloadNotes() {
+            const studentId = downloadAdminResultButton.dataset.id;
+            const studentName = downloadAdminResultButton.dataset.name;
+            if (!studentId || !studentName) return;
+
+            const exportContainer = document.getElementById('export-container');
+            if (!exportContainer) return;
+            
+            const button = downloadAdminResultButton;
+            const originalButtonText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+            button.disabled = true;
+
+            exportContainer.innerHTML = ''; 
+            const h1 = document.createElement('h1');
+            h1.textContent = `${studentName}님의 2025년 12월 이야기`;
+            exportContainer.appendChild(h1);
+
+            // (★배포용★) DB 경로: /{currentRoomId}/{studentId}
+            const docRef = doc(db, currentRoomId, studentId);
+            let answersToExport = {};
+            try {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    answersToExport = docSnap.data();
+                }
+            } catch (err) {
+                console.error("이미지 저장용 답변 로드 오류:", err);
+                alert("답변을 불러오는 데 실패했습니다.");
+                button.innerHTML = originalButtonText;
+                button.disabled = false;
                 return;
             }
 
-            const GOOGLE_FORM_ACTION_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdHztn5gaeJefnDyYc_JANn7nvnCD7oA-sRCSqefxUivM87wA/formResponse";
-            const GOOGLE_FORM_ENTRY_ID = "entry.677219120";
-
-            const formData = new FormData();
-            formData.append(GOOGLE_FORM_ENTRY_ID, feedbackValue);
-
-            feedbackSubmitBtn.disabled = true;
-            feedbackSubmitBtn.textContent = "제출 중...";
-            feedbackMessage.classList.add('hidden');
-
-            try {
-                await fetch(GOOGLE_FORM_ACTION_URL, {
-                    method: 'POST',
-                    body: formData,
-                    mode: 'no-cors' 
-                });
+            let notesFound = false;
+            for (let i = 1; i <= 25; i++) {
+                const day = i;
+                const answer = answersToExport[`day_${day}`];
                 
-                feedbackText.value = "";
-                feedbackMessage.textContent = "소중한 의견 감사합니다!";
-                feedbackMessage.className = "text-green-600 text-sm mt-2";
-                feedbackMessage.classList.remove('hidden');
-
-            } catch (error) {
-                console.error('Feedback submission error:', error);
-                feedbackMessage.textContent = "제출에 실패했습니다. 나중에 다시 시도해주세요.";
-                feedbackMessage.className = "text-red-600 text-sm mt-2";
-                feedbackMessage.classList.remove('hidden');
-            } finally {
-                feedbackSubmitBtn.disabled = false;
-                feedbackSubmitBtn.textContent = "의견 제출하기";
-            }
-        }
-
-
-        // --- 초기화 및 이벤트 리스너 ---
-        window.addEventListener('load', () => {
-            
-            // D-Day Counter Logic
-            try {
-                const dDayDisplay = document.getElementById('d-day-display-content');
-                if (dDayDisplay) {
-                    const targetDate = new Date('2026-01-07T00:00:00');
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0); 
-                    const diffTime = targetDate.getTime() - today.getTime();
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-
-                    let dDayText = "";
-                    if (diffDays > 0) {
-                        dDayText = `면접까지 D-${diffDays} 🍀`;
-                    } else if (diffDays === 0) {
-                        dDayText = `D-Day! 행운을 빕니다! 🍀`;
-                    } else {
-                        dDayText = `면접 D+${Math.abs(diffDays)} 🍀`;
-                    }
-                    dDayDisplay.textContent = dDayText;
-                }
-            } catch (e) {
-                console.error("Error calculating D-Day:", e);
-                const dDayDisplay = document.getElementById('d-day-display-content');
-                if(dDayDisplay) dDayDisplay.textContent = "D-Day 🍀"; 
-            }
-
-            // Firebase Auth 상태 리스너
-            if (auth) {
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        console.log("User is signed in:", userId);
-                    } else {
-                        console.log("User is not signed in, attempting auth...");
-                        try {
-                            const userCredential = await signInAnonymously(auth);
-                            userId = userCredential.user.uid;
-                            console.log("Signed in anonymously:", userId);
-                        } catch (error) {
-                            console.error("Authentication failed:", error);
-                            if (errorDisplay) {
-                                errorDisplay.textContent = `인증 실패: Firebase '익명 로그인'이 활성화되었는지 확인하세요. (오류: ${error.message})`;
-                                errorDisplay.classList.remove('hidden');
-                            }
-                            return;
-                        }
-                    }
+                if (answer !== null && answer !== undefined && answer.trim() !== '') {
+                    notesFound = true;
+                    const questionIndex = day - 1;
+                    if (questionIndex < 0 || questionIndex >= questionsDB.length) continue; 
+                    const question = questionsDB[questionIndex];
                     
-                    try {
-                        practiceCollectionRef = collection(db, `users/${userId}/interview_practice`);
-                        loadHistory();
-                        loadNextQuestion(); 
-                        
-                        // 방문자 수 카운터 시작
-                        setupVisitorCounter();
-                        
-                    } catch (e) {
-                         console.error("Error setting up Firestore:", e);
-                         if (errorDisplay) {
-                             errorDisplay.textContent = `Firestore 설정 오류: ${e.message}`;
-                             errorDisplay.classList.remove('hidden');
-                         }
-                    }
-                }, (error) => { 
-                    console.error("Auth state error:", error);
-                    if (errorDisplay) {
-                        errorDisplay.textContent = `인증 상태 오류: ${error.message}`;
-                        errorDisplay.classList.remove('hidden');
-                    }
-                });
-            } else {
-                console.error("Firebase Auth service is not available.");
-                 if (errorDisplay) {
-                     errorDisplay.textContent = "Firebase Auth 초기화에 실패했습니다. 페이지를 새로고침하세요.";
-                     errorDisplay.classList.remove('hidden');
-                 }
+                    const noteItem = document.createElement('div');
+                    noteItem.className = "note-item"; 
+                    const h3 = document.createElement('h3');
+                    h3.textContent = `12월 ${day}일`;
+                    const strong = document.createElement('strong');
+                    strong.textContent = `Q. ${question}`;
+                    const p = document.createElement('p');
+                    p.textContent = `A: ${answer}`;
+                    noteItem.appendChild(h3);
+                    noteItem.appendChild(strong);
+                    noteItem.appendChild(p);
+                    exportContainer.appendChild(noteItem);
+                }
+            }
+            if (!notesFound) {
+                 const p = document.createElement('p');
+                 p.textContent = "아직 작성된 쪽지가 없습니다.";
+                 exportContainer.appendChild(p);
             }
 
-            if (userAnswerTextarea) {
-                userAnswerTextarea.addEventListener('input', () => {
-                    if (submitBtn) submitBtn.disabled = (userAnswerTextarea.value.trim().length === 0);
+            setTimeout(() => {
+                html2canvas(exportContainer, { scale: 2, useCORS: true }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.href = canvas.toDataURL('image/png');
+                    link.download = `${studentId}_advent_notes_2025.png`;
+                    link.click();
+                    button.innerHTML = originalButtonText;
+                    button.disabled = false;
+                    exportContainer.innerHTML = '';
+                }).catch(err => {
+                    console.error("이미지 생성 오류:", err);
+                    alert("이미지 생성 중 오류가 발생했습니다.");
+                    button.innerHTML = originalButtonText; 
+                    button.disabled = false;
+                    exportContainer.innerHTML = '';
                 });
+            }, 500); 
+        }
+
+        // 16. 학생 답변 실시간 리스너
+        function attachUserAnswersListener() {
+            // (★배포용★) DB 경로: /{currentRoomId}/{studentId}
+            const docRef = doc(db, currentRoomId, currentStudentId);
+            
+            if (userAnswersUnsubscribe) userAnswersUnsubscribe();
+
+            userAnswersUnsubscribe = onSnapshot(docRef, (docSnap) => {
+                userAnswers = docSnap.exists() ? docSnap.data() : {};
+                console.log("실시간 답변 업데이트:", userAnswers);
+
+                renderCalendar(); 
+                if (checkCompletion()) {
+                    showSnow();
+                }
+            }, (err) => {
+                console.error("학생 답변 실시간 로드 오류:", err);
+                alert("답변을 실시간으로 불러오는 데 실패했습니다. 새로고침이 필요할 수 있습니다.");
+            });
+        }
+
+        // 17. 25일 완성 여부 확인
+        function checkCompletion() {
+            for (let i = 1; i <= 25; i++) {
+                const answer = userAnswers[`day_${i}`];
+                if (!answer || answer.trim() === '') {
+                    return false;
+                }
             }
-        });
-
-        if (nextBtn) nextBtn.onclick = loadNextQuestion;
-
-        if (historyToggleBtn) {
-            historyToggleBtn.onclick = () => {
-                if (historyContainer) {
-                    historyContainer.classList.toggle('hidden');
-                    historyToggleBtn.textContent = historyContainer.classList.contains('hidden') ? '공부 기록 보기' : '공부 기록 숨기기';
-                }
-            };
+            return true;
         }
 
-        if (clearHistoryBtn) {
-            clearHistoryBtn.onclick = () => {
-                if (confirmModal) confirmModal.classList.remove('hidden'); 
-            };
-        }
-        
-        if (cancelDeleteBtn) {
-            cancelDeleteBtn.onclick = () => { 
-                if (confirmModal) confirmModal.classList.add('hidden'); 
-            };
-        }
+        // 18. 눈송이 생성
+        function createSnowflakes() {
+            if (snowCreated) return;
+            const snowAmount = 100;
+            snowContainer.innerHTML = '';
+            const styleSheet = document.createElement("style");
+            document.head.appendChild(styleSheet);
+            
+            for (let i = 0; i < snowAmount; i++) {
+                const snowflake = document.createElement('div');
+                const size = Math.random() * 5 + 2;
+                const duration = Math.random() * 5 + 10;
+                const delay = Math.random() * 10;
+                const startX = Math.random() * 100;
+                const wind = (Math.random() - 0.5) * 200;
 
-        if (confirmDeleteBtn) {
-            confirmDeleteBtn.onclick = async () => {
-                try {
-                    if (!practiceCollectionRef) {
-                         if (confirmModal) confirmModal.classList.add('hidden');
-                         return;
+                snowflake.classList.add('snowflake');
+                snowflake.style.width = `${size}px`;
+                snowflake.style.height = `${size}px`;
+                snowflake.style.left = `${startX}vw`;
+                snowflake.style.animationDuration = `${duration}s`;
+                snowflake.style.animationDelay = `${delay}s`;
+                
+                const keyframeName = `fall-${i}`;
+                snowflake.style.animationName = keyframeName;
+                
+                styleSheet.sheet.insertRule(`
+                    @keyframes ${keyframeName} {
+                        0% { transform: translateY(-10px) translateX(0px); opacity: 0.8; }
+                        100% { transform: translateY(105vh) translateX(${wind}px); opacity: 0; }
                     }
-                    const q = query(practiceCollectionRef);
-                    const snapshot = await getDocs(q); 
-                    const batch = writeBatch(db); 
-                    snapshot.forEach(doc => {
-                        batch.delete(doc.ref);
-                    });
-                    await batch.commit();
-                    allHistory = [];
-                    renderHistory(allHistory); 
-                    if (confirmModal) confirmModal.classList.add('hidden'); 
+                `, styleSheet.sheet.cssRules.length);
 
-                } catch (error) {
-                    console.error("Error clearing history:", error);
-                    if(errorDisplay) {
-                        errorDisplay.textContent = `기록 삭제 중 오류: ${error.message}`;
-                        errorDisplay.classList.remove('hidden');
-                    } else {
-                        alert("기록 삭제 중 오류가 발생했습니다: " + error.message);
-                    }
-                    if (confirmModal) confirmModal.classList.add('hidden');
-                }
-            };
+                snowContainer.appendChild(snowflake);
+            }
+            snowCreated = true;
         }
 
-        if (feedbackForm) {
-            feedbackForm.addEventListener('submit', handleFeedbackSubmit);
+        // 19. 눈 내리기 효과 표시
+        function showSnow() {
+            createSnowflakes();
+            snowContainer.classList.remove('hidden');
+        }
+
+        // 20. 축하 모달 열기
+        function showCongratsModal() {
+            congratsModal.classList.remove('hidden');
+            setTimeout(() => {
+                congratsModal.classList.remove('opacity-0');
+                congratsModal.querySelector('.modal-content').classList.remove('scale-95');
+            }, 10);
+        }
+
+        // 21. 축하 모달 닫기
+        function closeCongratsModal() {
+            congratsModal.classList.add('opacity-0');
+            congratsModal.querySelector('.modal-content').classList.add('scale-95');
+            setTimeout(() => {
+                congratsModal.classList.add('hidden');
+            }, 300);
         }
 
     </script>
-</head>
-<body class="bg-gray-100 font-sans p-4 md:p-8">
-
-    <!-- 오류 표시줄 -->
-    <div id="error-display" class="hidden max-w-4xl mx-auto p-4 mb-4 bg-red-100 text-red-700 border border-red-300 rounded-lg"></div>
-
-    <div id="main-app" class="max-w-4xl mx-auto space-y-6">
+    
+    <style>
+        body, html {
+            font-family: 'Gaegu', cursive;
+            background-color: #052e16; /* 짙은 녹색 (배경) */
+            color: #fefce8; /* 따뜻한 흰색 (아이보리) */
+        }
         
-        <!-- D-Day & Stats Counter -->
-        <div class="flex flex-col items-end -mb-2 space-y-2">
-            <div class="bg-white py-2 px-4 rounded-lg shadow-lg text-lg font-semibold text-green-700 flex items-center gap-2">
-                <span id="d-day-display-content">Loading...</span>
-            </div>
-            <!-- 방문자 수 표시 -->
-            <div class="bg-blue-50 py-1 px-3 rounded-lg border border-blue-100 text-sm font-medium text-blue-600 flex items-center gap-2">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"></path></svg>
-                <span id="visitor-count-display">방문자 수 집계 중...</span>
-            </div>
+        #calendar-image-container {
+            background-image: url('https://i.imgur.com/gf0wfmi.jpeg'); 
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center; 
+            background-color: #044722;
+            aspect-ratio: 100 / 109; 
+        }
+
+        .day-hotspot {
+            z-index: 10;
+        }
+
+        .day-hotspot.day-unlocked {
+            border: 2px dashed rgba(255, 255, 255, 0.6);
+        }
+        
+        .day-hotspot.day-star.day-unlocked {
+             border: 3px dashed rgba(255, 255, 100, 0.8);
+        }
+
+        .day-hotspot.day-answered {
+            border: 2px solid rgba(253, 224, 71, 0.8);
+            box-shadow: 0 0 15px 5px rgba(253, 224, 71, 0.6),
+                        inset 0 0 5px 2px rgba(255, 255, 255, 0.7);
+        }
+        
+        .day-star {
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        }
+        
+        .day-star.day-answered {
+             box-shadow: 0 0 20px 8px rgba(253, 224, 71, 0.7),
+                inset 0 0 8px 3px rgba(255, 255, 255, 0.8);
+        }
+
+        .note-item {
+            border: 1px solid #facc15;
+            white-space: pre-wrap;
+        }
+        
+        /* 눈 내리기 효과 */
+        #snow-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 1000;
+        }
+        .snowflake {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            opacity: 0.8;
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
+        }
+        
+        /* 이미지 내보내기용 (숨김) */
+        #export-container {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            width: 800px; /* A4 용지 비율에 맞춘 너비 */
+            padding: 40px;
+            background-color: #fefce8; /* 쪽지와 유사한 배경색 */
+            color: #1f2937; /* 기본 텍스트 색상 */
+            font-family: 'Gaegu', cursive;
+        }
+        #export-container h1 {
+            font-size: 2.5rem; /* 40px */
+            font-weight: 700;
+            margin-bottom: 2rem; /* 32px */
+            text-align: center;
+            color: #052e16; /* 짙은 녹색 */
+        }
+        #export-container .note-item {
+            background-color: #fef3c7; /* yellow-100 */
+            color: #374151; /* gray-700 */
+            padding: 1.5rem; /* 24px */
+            border-radius: 0.5rem; /* 8px */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            margin-bottom: 1.5rem; /* 24px */
+            border: 1px solid #facc15;
+            white-space: pre-wrap; /* 줄바꿈 유지 */
+        }
+        #export-container .note-item h3 {
+            font-size: 1.875rem; /* 30px */
+            font-weight: 700;
+            margin-bottom: 0.5rem; /* 8px */
+            color: #065f46; /* green-800 */
+        }
+        #export-container .note-item strong {
+            font-size: 1.5rem; /* 24px */
+            color: #374151; /* gray-700 */
+            display: block;
+        }
+        #export-container .note-item p {
+            font-size: 1.5rem; /* 24px */
+            margin-top: 0.75rem; /* 12px */
+            white-space: pre-wrap; /* 줄바꿈 유지 */
+        }
+
+    </style>
+</head>
+<body id="main-body" class="bg-green-900">
+
+    <!-- 0. 눈 내리기 컨테이너 -->
+    <div id="snow-container" class="hidden"></div>
+
+    <div id="app" class="w-full max-w-4xl mx-auto">
+
+        <!-- 0. 로딩 오버레이 -->
+        <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-[9999]">
+            <i class="fas fa-spinner fa-spin text-6xl text-white mb-4"></i>
+            <p class="text-2xl text-white">연결 중...</p>
         </div>
 
-        <!-- 헤더 -->
-        <header class="text-center">
-            <h1 class="text-3xl md:text-4xl font-bold text-blue-800">2026 초등 임용 영어 면접 연습</h1>
-            <p class="text-lg text-gray-600 mt-2">나만의 맞춤형 피드백과 함께 실전처럼 연습하세요!</p>
-        </header>
-
-        <!-- 면접 연습 카드 -->
-        <main class="bg-white p-6 md:p-8 rounded-xl shadow-2xl space-y-6">
-            
-            <!-- 질문 표시 -->
-            <div>
-                <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">면접 질문:</h2>
-                <div id="question-display" class="mt-2 p-4 bg-gray-50 rounded-lg text-lg md:text-xl font-semibold text-gray-900 min-h-[6rem] flex items-center justify-center text-center">
-                    질문을 불러오는 중입니다...
-                </div>
-            </div>
-
-            <!-- 녹음 섹션 -->
-            <div id="recording-section" class="space-y-4">
-                <div class="flex flex-col sm:flex-row gap-4">
-                    <button id="record-btn" class="flex-shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 disabled:opacity-50">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zM10 15a5 5 0 005-5h-1.5a3.5 3.5 0 11-7 0H5a5 5 0 005 5z" clip-rule="evenodd"></path></svg>
-                        <span>녹음 시작</span>
+        <!-- 0. (★배포용★) 학급 ID 입력 페이지 -->
+        <div id="room-id-page" class="min-h-screen flex flex-col items-center justify-center p-4 hidden">
+            <div class="text-center p-8 bg-green-900 bg-opacity-75 rounded-lg shadow-xl w-full max-w-lg">
+                <h1 class="text-5xl font-bold mb-4">환영합니다!</h1>
+                <p class="text-xl mb-6">우리 학급(학교)만의<br><strong class="text-yellow-300 text-2xl">고유 ID</strong>를 입력해주세요.</p>
+                <p class="text-lg mb-6 text-gray-300">(선생님이 알려준 ID를 입력하세요.<br>예: `ㅇㅇ초 5-1, ㅇㅇ초 별빛반`)</p>
+                
+                <div class="space-y-4 max-w-sm mx-auto">
+                    <input id="room-id-input" type="text" placeholder="학급 고유 ID" class="w-full px-4 py-3 rounded-lg text-gray-900 text-2xl">
+                    <button id="room-id-submit" class="w-full bg-yellow-400 hover:bg-yellow-300 text-green-900 text-3xl font-bold py-3 rounded-lg transition-colors">
+                        <i class="fas fa-check"></i> 확인
                     </button>
-                    <p class="text-sm text-gray-500 flex-grow text-center sm:text-left my-auto">버튼을 누르고 영어로 답변하세요. 답변 수정도 가능합니다.</p>
-                </div>
-                
-                <label for="user-answer" class="block text-sm font-medium text-gray-700">나의 답변 (음성 인식 결과 / 직접 수정 가능):</label>
-                <textarea id="user-answer" class="w-full h-32 p-3 bg-gray-50 border border-gray-300 rounded-lg shadow-inner focus:ring-blue-500 focus:border-blue-500" placeholder="여기에 음성 인식 결과가 표시됩니다..."></textarea>
-                
-                <button id="submit-btn" class="w-full bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
-                    답변 제출 및 피드백 받기
-                </button>
-            </div>
-
-            <!-- 피드백 섹션 -->
-            <div id="feedback-section" class="hidden space-y-6">
-                <!-- 로딩 스피너 -->
-                <div id="loading-spinner" class="hidden flex items-center justify-center gap-3 text-lg text-blue-600 p-4">
-                    <svg class="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Gemini AI가 피드백을 생성 중입니다...</span>
-                </div>
-
-                <!-- 나의 답변 -->
-                <div class="space-y-2">
-                    <h4 class="text-lg font-semibold text-gray-800">나의 답변:</h4>
-                    <p id="submitted-answer-display" class="bg-gray-50 p-4 rounded-lg shadow-inner text-gray-700 whitespace-pre-wrap"></p>
-                </div>
-
-                <!-- 모범 답안 -->
-                <div class="space-y-2">
-                    <h4 class="text-lg font-semibold text-green-800">모범 답안 (AI):</h4>
-                    <p id="model-answer-display" class="bg-green-50 border border-green-200 p-4 rounded-lg shadow-inner text-green-900 whitespace-pre-wrap"></p>
-                </div>
-
-                <!-- AI 피드백 -->
-                <div class="space-y-2">
-                    <h4 class="text-lg font-semibold text-yellow-800">Gemini AI 피드백 (한국어):</h4>
-                    <p id="ai-feedback-display" class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg shadow-inner text-yellow-900 whitespace-pre-wrap"></p>
-                </div>
-
-                <!-- 다음 문제 버튼 -->
-                <button id="next-btn" class="hidden w-full bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-green-700 transition duration-200">
-                    다음 문제로
-                </button>
-            </div>
-        </main>
-
-        <!-- 공부 기록 섹션 -->
-        <section class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                <h3 class="text-2xl font-bold text-gray-800">나의 공부 기록 </h3>
-                <div class="flex gap-2">
-                    <button id="history-toggle-btn" class="text-sm text-blue-600 hover:text-blue-800 font-medium py-2 px-4 rounded-lg bg-blue-50 hover:bg-blue-100 transition">공부 기록 숨기기</button>
-                    <button id="clear-history-btn" class="text-sm text-red-600 hover:text-red-800 font-medium py-2 px-4 rounded-lg bg-red-50 hover:bg-red-100 transition">전체 기록 삭제</button>
+                    <div id="room-id-loading" class="hidden text-center p-4">
+                        <i class="fas fa-spinner fa-spin text-4xl text-white"></i>
+                        <p class="text-xl mt-2">데이터베이스 연결 중...</p>
+                    </div>
+                    <p id="room-id-error" class="text-red-400 text-lg h-12"></p>
                 </div>
             </div>
-            <div id="history-container" class="space-y-4 max-h-[30rem] overflow-y-auto p-4 bg-gray-50 rounded-lg border">
-                <div id="history-log" class="space-y-4">
-                    <p class="text-gray-500">공부 기록을 불러오는 중입니다...</p>
+        </div>
+
+        <!-- 1. 로그인 페이지 (login-page) -->
+        <div id="login-page" class="min-h-screen flex flex-col items-center justify-center p-4 hidden">
+            <div class="text-center p-8 bg-green-900 bg-opacity-75 rounded-lg shadow-xl w-full max-w-lg">
+                <h1 class="text-5xl font-bold mb-4">2025년을 돌아보는</h1>
+                <h2 class="text-6xl font-bold mb-8 text-yellow-300">12월의 이야기</h2>
+                <p class="text-xl mb-6">이름과 비밀번호를 입력하고,<br>나만의 비밀 캘린더를 열어보세요.</p>
+            
+                <div class="space-y-4 max-w-sm mx-auto">
+                    <input id="name-input" type="text" placeholder="이름 (예: 홍길동)" class="w-full px-4 py-3 rounded-lg text-gray-900 text-2xl">
+                    <input id="pass-input" type="password" placeholder="비밀번호 (예: 1234)" class="w-full px-4 py-3 rounded-lg text-gray-900 text-2xl">
+                    <button id="login-button" class="w-full bg-yellow-400 hover:bg-yellow-300 text-green-900 text-3xl font-bold py-3 rounded-lg transition-colors">
+                        <i class="fas fa-gift"></i> 캘린더 열기
+                    </button>
+                    <p id="login-error" class="text-red-400 text-lg h-6"></p>
                 </div>
             </div>
-        </section>
+            
+            <button id="admin-settings-button" class="absolute bottom-6 right-6 bg-gray-700 hover:bg-gray-600 text-white text-lg font-bold py-3 px-5 rounded-full shadow-lg">
+                <i class="fas fa-cog"></i> 관리자 설정
+            </button>
+        </div>
 
-        <!-- 피드백 폼 섹션 -->
-        <section class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
-            <h3 class="text-2xl font-bold text-gray-800 mb-4">앱 피드백</h3>
-            <p class="text-gray-600 mb-4">
-                앱을 사용하시면서 느낀 좋은 점, 불편한 점, 개선 아이디어 등을 자유롭게 남겨주세요!
-                (<a href="https://blog.naver.com/codenamedream" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">https://blog.naver.com/codenamedream</a> 링크를 누르면 블로그로 이동합니다.)
+        <!-- 2. 메인 캘린더 페이지 (main-page) -->
+        <div id="main-page" class="hidden p-4">
+            <div class="flex justify-between items-center mb-6 flex-wrap">
+                <h2 id="student-name-header" class="text-3xl sm:text-4xl font-bold">OOO님의 2025년 캘린더</h2>
+                <div class="mt-4 sm:mt-0">
+                    <button id="go-to-notes" class="bg-yellow-400 hover:bg-yellow-300 text-green-900 text-lg font-bold py-2 px-4 rounded-lg mr-2">
+                        <i class="fas fa-book-open"></i> 내 쪽지 모아보기
+                    </button>
+                    <button id="logout-button" class="bg-red-600 hover:bg-red-500 text-white text-lg font-bold py-2 px-4 rounded-lg">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="calendar-image-container" class="relative w-full max-w-2xl mx-auto">
+                <!-- 핫스팟(전구)이 여기에 동적으로 생성됩니다 -->
+            </div>
+
+            <p class="text-center text-sm mt-4 text-gray-400">
+                 * 이 캘린더의 모든 기록은 클라우드에 실시간으로 저장됩니다.
             </p>
-            <form id="feedback-form">
-                <label for="feedback-text" class="sr-only">피드백 내용</label>
-                <textarea id="feedback-text" class="w-full h-28 p-3 bg-gray-50 border border-gray-300 rounded-lg shadow-inner focus:ring-blue-500 focus:border-blue-500" placeholder="여기에 의견을 입력하세요..."></textarea>
-                <button id="feedback-submit-btn" type="submit" class="w-full mt-4 bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-gray-800 transition duration-200">
-                    의견 제출하기
+        </div>
+
+        <!-- 3. 쪽지 모아보기 (notes-page) -->
+        <div id="notes-page" class="hidden p-4">
+            <div class="flex justify-between items-center mb-6 flex-wrap">
+                <h2 id="notes-header" class="text-3xl sm:text-4xl font-bold">OOO님의 2025년 쪽지함</h2>
+                <div class="mt-4 sm:mt-0">
+                     <button id="download-notes-button" class="bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold py-2 px-4 rounded-lg mr-2">
+                        <i class="fas fa-camera"></i> 쪽지 사진 저장
+                    </button>
+                    <button id="go-to-main" class="bg-yellow-400 hover:bg-yellow-300 text-green-900 text-lg font-bold py-2 px-4 rounded-lg">
+                        <i class="fas fa-calendar-alt"></i> 캘린더로 돌아가기
+                    </button>
+                </div>
+            </div>
+            
+            <div id="notes-container" class="space-y-4 max-h-[70vh] overflow-y-auto bg-green-950 bg-opacity-50 p-4 rounded-lg">
+                <!-- 쪽지가 여기에 동적으로 생성됩니다 -->
+            </div>
+        </div>
+        
+        <!-- 4. 관리자 - 학생 결과 보기 (results-page) -->
+        <div id="results-page" class="hidden p-4">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-3xl sm:text-4xl font-bold">관리자: 학생 결과 보기</h2>
+                <button id="back-to-login-button" class="bg-yellow-400 hover:bg-yellow-300 text-green-900 text-lg font-bold py-2 px-4 rounded-lg">
+                    <i class="fas fa-arrow-left"></i> 로그인 화면으로
                 </button>
-                <p id="feedback-message" class="hidden text-sm mt-2"></p>
-            </form>
-        </section>
+            </div>
+            
+            <div class="flex flex-col md:flex-row gap-6">
+                <!-- 왼쪽: 학생 목록 -->
+                <div class="md:w-1/3 bg-green-950 bg-opacity-50 p-4 rounded-lg max-h-[70vh] overflow-y-auto">
+                    <h3 class="text-2xl font-bold mb-4 border-b pb-2 border-gray-500">학생 목록</h3>
+                    <div id="student-list-container" class="space-y-2">
+                        <!-- 학생 목록이 여기에 동적으로 생성됩니다 -->
+                    </div>
+                </div>
+                
+                <!-- 오른쪽: 선택된 학생의 답변 -->
+                <div class="md:w-2/3 bg-green-950 bg-opacity-50 p-4 rounded-lg max-h-[70vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-500">
+                         <h3 id="result-detail-name" class="text-2xl font-bold">학생을 선택하세요</h3>
+                         <button id="download-admin-result-button" class="hidden bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold py-2 px-4 rounded-lg">
+                            <i class="fas fa-camera"></i> 이 학생 쪽지 저장
+                        </button>
+                    </div>
+                    <div id="student-result-detail" class="space-y-4">
+                        <!-- 선택된 학생의 쪽지가 여기에 동적으로 생성됩니다 -->
+                    </div>
+                </div>
+            </div>
+        </div>
 
     </div>
 
-    <!-- 기록 삭제 확인 모달 -->
-    <div id="confirmModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
-        <div class="bg-white rounded-lg shadow-2xl max-w-sm w-full p-6">
-            <h4 class="text-xl font-bold text-gray-900 mb-2">정말 삭제하시겠습니까?</h4>
-            <p class="text-gray-600 mb-6">모든 공부 기록이 영구적으로 삭제되며, 복구할 수 없습니다.</p>
-            <div class="flex justify-end gap-3">
-                <button id="cancelDeleteBtn" class="py-2 px-4 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition font-medium">
-                    취소
-                </button>
-                <button id="confirmDeleteBtn" class="py-2 px-4 rounded-lg bg-red-600 text-white hover:bg-red-700 transition font-medium">
-                    삭제 확인
-                </button>
+    <!-- 5. 질문 & 답변 팝업 (Modal) -->
+    <div id="modal" class="modal-overlay hidden opacity-0 fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center transition-opacity duration-300 z-50">
+        <div class="modal-content transform scale-95 transition-transform duration-300 bg-white text-gray-900 p-6 rounded-lg shadow-xl max-w-md w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modal-title" class="text-3xl font-bold">12월 X일의 질문</h3>
+                <button id="modal-close" class="text-3xl text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            
+            <p id="modal-question" class="text-2xl mb-4">Q. [질문이 여기에 표시됩니다]</p>
+            
+            <textarea id="modal-textarea" rows="6" class="w-full p-3 border border-gray-300 rounded-lg text-xl text-gray-900" placeholder="여기에 답변을 입력하세요..."></textarea>
+            
+            <button id="modal-save" class="w-full mt-4 bg-green-700 hover:bg-green-600 text-white text-2xl font-bold py-3 rounded-lg transition-colors">
+                <i class="fas fa-save"></i> 쪽지 저장하기
+            </button>
+        </div>
+    </div>
+    
+    <!-- 6. 관리자 설정 모달 (Admin Modal) -->
+    <div id="admin-modal" class="modal-overlay hidden opacity-0 fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center transition-opacity duration-300 z-50">
+        <div class="modal-content transform scale-95 transition-transform duration-300 bg-white text-gray-900 p-6 rounded-lg shadow-xl max-w-lg w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-3xl font-bold">관리자 설정</h3>
+                <button id="admin-modal-close" class="text-3xl text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            
+            <div class="space-y-6">
+                <!-- 엑셀 등록 -->
+                <div class="p-4 border rounded-lg bg-gray-50">
+                    <h4 class="text-2xl font-bold mb-3 text-gray-800">1. 학생 명단 갱신하기</h4>
+                    <p class="text-lg mb-2">.xlsx 또는 .csv 파일로 학생 명단을 등록하세요.</p>
+                    <p class="text-md mb-3 text-gray-600">파일은 'name', 'pass' 2개의 컬럼을 포함해야 합니다. ('id'는 자동 생성됩니다)</p>
+                    <a id="download-example-excel" href="#" class="text-lg text-blue-600 hover:underline mb-4 inline-block">[ 엑셀 예시 파일 다운로드 ]</a>
+                    <input id="excel-file-input" type="file" accept=".xlsx, .csv" class="w-full text-lg border p-2 rounded-lg">
+                    <button id="upload-excel-button" class="w-full mt-3 bg-blue-600 hover:bg-blue-500 text-white text-2xl font-bold py-3 rounded-lg transition-colors">
+                        <i class="fas fa-upload"></i> 명단 갱신하기
+                    </button>
+                    <p id="admin-message" class="text-lg h-6 mt-2"></p>
+                </div>
+                
+                <!-- 결과 보기 -->
+                <div class="p-4 border rounded-lg bg-gray-50">
+                     <h4 class="text-2xl font-bold mb-3 text-gray-800">2. 학생 결과 보기</h4>
+                     <p class="text-lg mb-3 text-gray-600">등록된 모든 학생들의 답변 내용을 확인합니다.</p>
+                     <button id="view-results-button" class="w-full bg-green-700 hover:bg-green-600 text-white text-2xl font-bold py-3 rounded-lg transition-colors">
+                        <i class="fas fa-chart-bar"></i> 학생 결과 보기
+                    </button>
+                </div>
             </div>
         </div>
     </div>
+    
+    <!-- 7. 관리자 비밀번호 모달 (Admin Password Modal) -->
+    <div id="admin-password-modal" class="modal-overlay hidden opacity-0 fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center transition-opacity duration-300 z-50">
+        <div class="modal-content transform scale-95 transition-transform duration-300 bg-white text-gray-900 p-6 rounded-lg shadow-xl max-w-sm w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-3xl font-bold">관리자 접근</h3>
+                <button id="admin-password-close" class="text-3xl text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <p class="text-xl mb-4">관리자 비밀번호를 입력하세요.</p>
+            <input id="admin-password-input" type="password" class="w-full px-4 py-3 rounded-lg text-gray-900 text-2xl border border-gray-300">
+            <p id="admin-password-error" class="text-red-500 text-lg h-6 mt-2"></p>
+            <button id="admin-password-submit" class="w-full mt-4 bg-green-700 hover:bg-green-600 text-white text-2xl font-bold py-3 rounded-lg transition-colors">
+                <i class="fas fa-key"></i> 확인
+            </button>
+        </div>
+    </div>
+
+    <!-- 8. 25일 완성 축하 모달 (Congrats Modal) -->
+    <div id="congrats-modal" class="modal-overlay hidden opacity-0 fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center transition-opacity duration-300 z-50">
+        <div class="modal-content transform scale-95 transition-transform duration-300 bg-gradient-to-br from-red-600 to-red-800 text-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
+            <h2 class="text-7xl font-bold mb-4" style="font-family: 'Gaegu', cursive; text-shadow: 2px 2px #000;">Merry Christmas!</h2>
+            <!-- (★고정★) 사용자님이 고정하신 문구입니다. -->
+            <p class="text-3xl mb-6">25일간의 모든 이야기를 완성했어요!<br>2025년, 즐거웠나요? 🎄</p>
+            <button id="congrats-modal-close" class="mt-4 bg-yellow-400 hover:bg-yellow-300 text-green-900 text-2xl font-bold py-3 px-6 rounded-lg transition-colors">
+                닫기
+            </button>
+        </div>
+    </div>
+
+    <!-- 9. 이미지 내보내기용 숨겨진 DIV -->
+    <div id="export-container" aria-hidden="true"></div>
 
 </body>
 </html>
